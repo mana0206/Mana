@@ -146,57 +146,29 @@ export default function PedidoDetalhePage() {
     });
   }
 
-  async function baixarEstoque() {
+  // Na entrega, baixa o estoque de produto acabado (a matéria-prima já foi
+  // baixada quando a receita foi produzida, na tela da Receita).
+  async function baixarEstoqueProdutos() {
     const supabase = createClient();
-    // consumo = quantidade do item × (quantidade do ingrediente na receita / rendimento)
     const itensComProduto = itens.filter((i) => i.produto_id);
     if (itensComProduto.length === 0) return;
     const { data: prods } = await supabase
       .from("produtos")
-      .select("id, receita_id, receita:receitas(id, rendimento_qtd, itens:receita_ingredientes(ingrediente_id, quantidade))")
+      .select("id, estoque_atual")
       .in("id", itensComProduto.map((i) => i.produto_id));
     if (!prods) return;
-
-    const consumo = new Map<string, number>();
-    for (const item of itensComProduto) {
-      const prod = prods.find((p) => p.id === item.produto_id) as unknown as {
-        receita: {
-          rendimento_qtd: number;
-          itens: { ingrediente_id: string; quantidade: number }[];
-        } | null;
-      };
-      if (!prod?.receita || prod.receita.rendimento_qtd <= 0) continue;
-      for (const ri of prod.receita.itens) {
-        const usado =
-          (ri.quantidade / prod.receita.rendimento_qtd) * item.quantidade;
-        consumo.set(
-          ri.ingrediente_id,
-          (consumo.get(ri.ingrediente_id) ?? 0) + usado
-        );
-      }
-    }
-    if (consumo.size === 0) return;
-
-    const ids = Array.from(consumo.keys());
-    const { data: ings } = await supabase
-      .from("ingredientes")
-      .select("id, estoque_atual")
-      .in("id", ids);
-    if (!ings) return;
     await Promise.all(
-      ings.map((ing) =>
-        supabase
-          .from("ingredientes")
-          .update({
-            estoque_atual: Math.max(
-              0,
-              ing.estoque_atual - (consumo.get(ing.id) ?? 0)
-            ),
-          })
-          .eq("id", ing.id)
-      )
+      prods.map((prod) => {
+        const vendido = itensComProduto
+          .filter((i) => i.produto_id === prod.id)
+          .reduce((s, i) => s + i.quantidade, 0);
+        return supabase
+          .from("produtos")
+          .update({ estoque_atual: Math.max(0, prod.estoque_atual - vendido) })
+          .eq("id", prod.id);
+      })
     );
-    toast.info("Estoque de ingredientes baixado");
+    toast.info("Estoque de produtos baixado");
   }
 
   async function avancarStatus() {
@@ -220,8 +192,8 @@ export default function PedidoDetalhePage() {
       );
       toast.success("Sinal registrado no financeiro");
     }
-    if (proximo === "em_producao") {
-      await baixarEstoque();
+    if (proximo === "entregue") {
+      await baixarEstoqueProdutos();
     }
     setProcessando(false);
     carregar();

@@ -12,6 +12,7 @@ import { formatBRL, formatQtd, parseDecimalSimples } from "@/lib/format";
 import type {
   CustoFixo,
   Ingrediente,
+  Produto,
   Receita,
   ReceitaIngrediente,
 } from "@/lib/types";
@@ -47,7 +48,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
-import { ArrowLeft, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, CookingPot, Plus, Trash2 } from "lucide-react";
 
 export default function ReceitaDetalhePage() {
   const { id } = useParams<{ id: string }>();
@@ -61,10 +62,15 @@ export default function ReceitaDetalhePage() {
   const [confirmaExcluir, setConfirmaExcluir] = useState(false);
   const [ingSelecionado, setIngSelecionado] = useState("");
   const [qtdItem, setQtdItem] = useState("");
+  const [produtos, setProdutos] = useState<Produto[]>([]);
+  const [dialogProducao, setDialogProducao] = useState(false);
+  const [multiplicador, setMultiplicador] = useState("1");
+  const [produtoDestino, setProdutoDestino] = useState("nenhum");
+  const [produzindo, setProduzindo] = useState(false);
 
   const carregar = useCallback(async () => {
     const supabase = createClient();
-    const [recRes, itensRes, ingRes, cfRes] = await Promise.all([
+    const [recRes, itensRes, ingRes, cfRes, prodRes] = await Promise.all([
       supabase.from("receitas").select("*").eq("id", id).single(),
       supabase
         .from("receita_ingredientes")
@@ -72,11 +78,15 @@ export default function ReceitaDetalhePage() {
         .eq("receita_id", id),
       supabase.from("ingredientes").select("*").order("nome"),
       supabase.from("custos_fixos").select("*"),
+      supabase.from("produtos").select("*").eq("receita_id", id),
     ]);
     setReceita(recRes.data as Receita);
     setItens((itensRes.data as ReceitaIngrediente[]) ?? []);
     setIngredientes((ingRes.data as Ingrediente[]) ?? []);
     setCustosFixos((cfRes.data as CustoFixo[]) ?? []);
+    const prods = (prodRes.data as Produto[]) ?? [];
+    setProdutos(prods);
+    if (prods.length === 1) setProdutoDestino(prods[0].id);
     setCarregando(false);
   }, [id]);
 
@@ -115,6 +125,57 @@ export default function ReceitaDetalhePage() {
   async function removerItem(itemId: string) {
     const supabase = createClient();
     await supabase.from("receita_ingredientes").delete().eq("id", itemId);
+    carregar();
+  }
+
+  async function produzir(e: React.FormEvent) {
+    e.preventDefault();
+    if (!receita) return;
+    const mult = parseDecimalSimples(multiplicador) || 1;
+    setProduzindo(true);
+    const supabase = createClient();
+
+    // baixa cada ingrediente da ficha técnica (quantidade × multiplicador)
+    await Promise.all(
+      itens
+        .filter((item) => item.ingrediente)
+        .map((item) =>
+          supabase
+            .from("ingredientes")
+            .update({
+              estoque_atual: Math.max(
+                0,
+                Number(item.ingrediente!.estoque_atual) - item.quantidade * mult
+              ),
+            })
+            .eq("id", item.ingrediente_id)
+        )
+    );
+
+    // credita o produto acabado
+    const produzido = receita.rendimento_qtd * mult;
+    if (produtoDestino !== "nenhum") {
+      const prod = produtos.find((p) => p.id === produtoDestino);
+      if (prod) {
+        await supabase
+          .from("produtos")
+          .update({ estoque_atual: Number(prod.estoque_atual) + produzido })
+          .eq("id", prod.id);
+      }
+    }
+
+    await supabase.from("producoes").insert({
+      receita_id: id,
+      produto_id: produtoDestino !== "nenhum" ? produtoDestino : null,
+      multiplicador: mult,
+      quantidade_produzida: produzido,
+    });
+
+    setProduzindo(false);
+    setDialogProducao(false);
+    toast.success(
+      `Produção registrada: ${formatQtd(produzido)} ${receita.rendimento_unidade} — ingredientes baixados do estoque`
+    );
     carregar();
   }
 
@@ -196,6 +257,16 @@ export default function ReceitaDetalhePage() {
           </div>
         </CardContent>
       </Card>
+
+      <Button
+        size="lg"
+        className="w-full"
+        onClick={() => setDialogProducao(true)}
+        disabled={itens.length === 0}
+      >
+        <CookingPot className="size-5" />
+        Produzir esta receita
+      </Button>
 
       <Card>
         <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
@@ -359,6 +430,105 @@ export default function ReceitaDetalhePage() {
               </Button>
             </form>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={dialogProducao} onOpenChange={setDialogProducao}>
+        <DialogContent className="max-h-[90dvh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Produzir — {receita.nome}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={produzir} className="space-y-4">
+            <div className="space-y-2">
+              <Label>Quantas vezes a receita?</Label>
+              <Input
+                inputMode="decimal"
+                value={multiplicador}
+                onChange={(e) => setMultiplicador(e.target.value)}
+                required
+              />
+              <p className="text-xs text-muted-foreground">
+                Produz{" "}
+                <strong>
+                  {formatQtd(
+                    receita.rendimento_qtd *
+                      (parseDecimalSimples(multiplicador) || 0)
+                  )}{" "}
+                  {receita.rendimento_unidade}
+                </strong>
+              </p>
+            </div>
+
+            <div className="space-y-1 rounded-lg bg-secondary p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Baixa de ingredientes
+              </p>
+              {itens.map((item) => {
+                const necessario =
+                  item.quantidade * (parseDecimalSimples(multiplicador) || 0);
+                const disponivel = Number(item.ingrediente?.estoque_atual ?? 0);
+                const falta = necessario > disponivel;
+                return (
+                  <div
+                    key={item.id}
+                    className="flex justify-between text-sm"
+                  >
+                    <span className={falta ? "text-destructive" : undefined}>
+                      {item.ingrediente?.nome}
+                    </span>
+                    <span
+                      className={
+                        falta
+                          ? "font-medium text-destructive"
+                          : "text-muted-foreground"
+                      }
+                    >
+                      {formatQtd(necessario)} / {formatQtd(disponivel)}{" "}
+                      {item.ingrediente?.unidade_uso}
+                    </span>
+                  </div>
+                );
+              })}
+              {itens.some(
+                (item) =>
+                  item.quantidade * (parseDecimalSimples(multiplicador) || 0) >
+                  Number(item.ingrediente?.estoque_atual ?? 0)
+              ) && (
+                <p className="pt-1 text-xs text-destructive">
+                  ⚠ Estoque insuficiente em algum item — a baixa vai até zero.
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label>Lançar produto acabado em</Label>
+              <Select value={produtoDestino} onValueChange={setProdutoDestino}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {produtos.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.nome} (estoque: {formatQtd(p.estoque_atual)})
+                    </SelectItem>
+                  ))}
+                  <SelectItem value="nenhum">
+                    Não lançar (só baixar ingredientes)
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              {produtos.length === 0 && (
+                <p className="text-xs text-muted-foreground">
+                  Nenhum produto usa esta receita ainda — crie um em Produtos
+                  para controlar o estoque do item acabado.
+                </p>
+              )}
+            </div>
+
+            <Button type="submit" className="w-full" disabled={produzindo}>
+              {produzindo ? "Registrando..." : "Confirmar produção"}
+            </Button>
+          </form>
         </DialogContent>
       </Dialog>
 

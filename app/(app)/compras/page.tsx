@@ -19,7 +19,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Plus, ShoppingCart, Package } from "lucide-react";
+import Link from "next/link";
+import { Plus, ShoppingCart, Package, QrCode } from "lucide-react";
 
 type Demanda = { ingrediente: Ingrediente; necessario: number };
 
@@ -170,12 +171,20 @@ export default function ComprasPage() {
       <PageHeader
         titulo="Compras & Estoque"
         acao={
-          aba === "lista" ? (
-            <Button size="sm" onClick={() => setDialogManual(true)}>
-              <Plus className="size-4" />
-              Item
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" asChild>
+              <Link href="/compras/nota">
+                <QrCode className="size-4" />
+                Nota
+              </Link>
             </Button>
-          ) : undefined
+            {aba === "lista" && (
+              <Button size="sm" onClick={() => setDialogManual(true)}>
+                <Plus className="size-4" />
+                Item
+              </Button>
+            )}
+          </div>
         }
       />
 

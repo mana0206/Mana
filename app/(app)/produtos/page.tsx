@@ -261,7 +261,8 @@ export default function ProdutosPage() {
                     </div>
                     <p className="text-xs text-muted-foreground">
                       Custo {formatBRL(custo)} · Margem{" "}
-                      {p.margem.toLocaleString("pt-BR")}%
+                      {p.margem.toLocaleString("pt-BR")}% · Estoque{" "}
+                      {Number(p.estoque_atual ?? 0).toLocaleString("pt-BR")}
                     </p>
                     <p className="text-sm">
                       <span className="font-semibold text-primary">

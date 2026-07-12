@@ -48,8 +48,29 @@ export type Produto = {
   preco_venda: number | null;
   foto_url: string | null;
   ativo: boolean;
+  estoque_atual: number;
   created_at: string;
   receita?: Receita | null;
+};
+
+export type Producao = {
+  id: string;
+  receita_id: string | null;
+  produto_id: string | null;
+  multiplicador: number;
+  quantidade_produzida: number;
+  observacoes: string | null;
+  created_at: string;
+};
+
+export type NotaImportada = {
+  id: string;
+  chave: string;
+  emitente: string | null;
+  valor_total: number | null;
+  data_emissao: string | null;
+  itens_importados: number;
+  created_at: string;
 };
 
 export type Cliente = {

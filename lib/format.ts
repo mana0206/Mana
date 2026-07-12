@@ -40,9 +40,19 @@ export function formatDataEntrega(iso: string | null): string {
   return format(d, "EEE, dd/MM", { locale: ptBR }) + comHora;
 }
 
+/** Datas "yyyy-mm-dd" (sem hora) são interpretadas no fuso local —
+ * `new Date("2026-07-06")` seria UTC e exibiria o dia anterior no Brasil. */
+function comoDataLocal(iso: string): Date {
+  const soData = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (soData) {
+    return new Date(Number(soData[1]), Number(soData[2]) - 1, Number(soData[3]));
+  }
+  return new Date(iso);
+}
+
 export function formatData(iso: string | null): string {
   if (!iso) return "—";
-  return format(new Date(iso), "dd/MM/yyyy");
+  return format(comoDataLocal(iso), "dd/MM/yyyy");
 }
 
 export function formatMesAno(d: Date): string {

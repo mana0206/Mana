@@ -1,5 +1,7 @@
 // Aplica supabase/migrations/*.sql no projeto via Management API.
-// Uso: node scripts/aplicar-schema.mjs
+// Uso: node scripts/aplicar-schema.mjs [arquivo.sql]
+//   sem argumento: aplica todas as migrations (apenas banco novo!)
+//   com argumento: aplica só a migration informada
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -16,8 +18,10 @@ const ref = new URL(env.NEXT_PUBLIC_SUPABASE_URL).hostname.split(".")[0];
 const token = env.SUPABASE_ACCESS_TOKEN;
 
 const pasta = join(raiz, "supabase", "migrations");
+const apenas = process.argv[2];
 for (const arquivo of readdirSync(pasta).sort()) {
   if (!arquivo.endsWith(".sql")) continue;
+  if (apenas && arquivo !== apenas) continue;
   const sql = readFileSync(join(pasta, arquivo), "utf8");
   const res = await fetch(
     `https://api.supabase.com/v1/projects/${ref}/database/query`,

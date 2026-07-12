@@ -40,8 +40,21 @@ App PWA mobile-first para gerenciar a Maná (cozinha artesanal — pães, bolos,
 3. **Custos fixos** (menu Mais → Custos fixos): gás, embalagem, mão de obra — entram em toda receita, como valor fixo (R$) ou % sobre os ingredientes.
 4. **Produtos**: ligue à receita, defina a margem desejada (%) → o app mostra o **preço sugerido**; você decide o preço praticado.
 
+## Compras por QR code (NFC-e)
+
+Em **Compras & Estoque → Nota**, escaneie o QR code do cupom fiscal (ou cole o link). O app consulta a nota na Sefaz-GO e:
+
+1. Lista todos os itens com quantidade e preço, sugerindo o vínculo com ingredientes já cadastrados (por similaridade de nome);
+2. Para cada item você escolhe: **criar** ingrediente novo, **vincular** a um existente ou **não importar**;
+3. Ao confirmar: o estoque entra convertido (kg → g, L → ml), o custo do ingrediente é atualizado pela compra mais recente e o **total da nota vira despesa** no financeiro;
+4. A chave da nota fica registrada — a mesma nota não importa duas vezes.
+
+## Produção
+
+Na tela da **Receita → "Produzir esta receita"**: informe quantas vezes a receita foi feita. O app **baixa os ingredientes** da ficha técnica (mostrando antes o que falta) e **credita o produto acabado** no estoque. Na **entrega do pedido**, o estoque do produto acabado é baixado automaticamente.
+
 ## Fluxo do pedido
 
-`Orçamento` → (enviar pelo WhatsApp) → `Confirmado` (sinal entra no financeiro) → `Em produção` (estoque de ingredientes é baixado) → `Pronto` → `Entregue` → registrar pagamento (saldo entra no financeiro).
+`Orçamento` → (enviar pelo WhatsApp) → `Confirmado` (sinal entra no financeiro) → `Em produção` → `Pronto` → `Entregue` (baixa o estoque de produto acabado) → registrar pagamento (saldo entra no financeiro).
 
 A **lista de compras** é gerada sozinha: ingredientes abaixo do estoque mínimo + o que os pedidos confirmados vão consumir.
