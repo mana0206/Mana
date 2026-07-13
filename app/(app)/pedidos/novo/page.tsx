@@ -35,6 +35,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
+import {
+  DataHoraInput,
+  dataHoraParaISO,
+} from "@/components/data-hora-input";
 import { toast } from "sonner";
 import { ArrowLeft, Plus, Trash2, UserPlus } from "lucide-react";
 
@@ -173,13 +177,18 @@ export default function NovoPedidoPage() {
       toast.error("Adicione pelo menos um item ao pedido");
       return;
     }
+    const entregaISO = dataEntrega ? dataHoraParaISO(dataEntrega) : null;
+    if (dataEntrega && !entregaISO) {
+      toast.error("Data de entrega inválida — use dd/mm/aa hh:mm");
+      return;
+    }
     setSalvando(true);
     const supabase = createClient();
     const { data: pedido, error } = await supabase
       .from("pedidos")
       .insert({
         cliente_id: clienteId || null,
-        data_entrega: dataEntrega ? new Date(dataEntrega).toISOString() : null,
+        data_entrega: entregaISO,
         desconto: parseDecimalSimples(desconto),
         sinal: parseDecimalSimples(sinal),
         observacoes: observacoes.trim() || null,
@@ -262,11 +271,10 @@ export default function NovoPedidoPage() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="entrega">Data e hora da entrega</Label>
-              <Input
+              <DataHoraInput
                 id="entrega"
-                type="datetime-local"
                 value={dataEntrega}
-                onChange={(e) => setDataEntrega(e.target.value)}
+                onChange={setDataEntrega}
               />
             </div>
           </CardContent>

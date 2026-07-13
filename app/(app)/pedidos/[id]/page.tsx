@@ -49,8 +49,12 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  DataHoraInput,
+  dataHoraParaISO,
+  isoParaDataHora,
+} from "@/components/data-hora-input";
 import { toast } from "sonner";
-import { format } from "date-fns";
 import {
   ArrowLeft,
   ArrowRight,
@@ -271,11 +275,7 @@ export default function PedidoDetalhePage() {
   }
 
   function abrirEditar() {
-    setEditEntrega(
-      pedido?.data_entrega
-        ? format(new Date(pedido.data_entrega), "yyyy-MM-dd'T'HH:mm")
-        : ""
-    );
+    setEditEntrega(isoParaDataHora(pedido?.data_entrega ?? null));
     setEditDesconto(String(pedido?.desconto ?? 0).replace(".", ","));
     setEditSinal(String(pedido?.sinal ?? 0).replace(".", ","));
     setEditObs(pedido?.observacoes ?? "");
@@ -284,13 +284,16 @@ export default function PedidoDetalhePage() {
 
   async function salvarEdicao(e: React.FormEvent) {
     e.preventDefault();
+    const entregaISO = editEntrega ? dataHoraParaISO(editEntrega) : null;
+    if (editEntrega && !entregaISO) {
+      toast.error("Data de entrega inválida — use dd/mm/aa hh:mm");
+      return;
+    }
     const supabase = createClient();
     const { error } = await supabase
       .from("pedidos")
       .update({
-        data_entrega: editEntrega
-          ? new Date(editEntrega).toISOString()
-          : null,
+        data_entrega: entregaISO,
         desconto: parseDecimalSimples(editDesconto),
         sinal: parseDecimalSimples(editSinal),
         observacoes: editObs.trim() || null,
@@ -585,11 +588,7 @@ export default function PedidoDetalhePage() {
           <form onSubmit={salvarEdicao} className="space-y-4">
             <div className="space-y-2">
               <Label>Data e hora da entrega</Label>
-              <Input
-                type="datetime-local"
-                value={editEntrega}
-                onChange={(e) => setEditEntrega(e.target.value)}
-              />
+              <DataHoraInput value={editEntrega} onChange={setEditEntrega} />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
