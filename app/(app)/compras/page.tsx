@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { formatBRL, formatQtd, parseDecimalSimples } from "@/lib/format";
-import type { Compra, Ingrediente } from "@/lib/types";
+import type { Compra, Ingrediente, Produto } from "@/lib/types";
 import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/empty-state";
 import { Button } from "@/components/ui/button";
@@ -20,13 +20,14 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import Link from "next/link";
-import { Plus, ShoppingCart, Package, QrCode } from "lucide-react";
+import { Plus, ShoppingCart, Package, QrCode, Croissant } from "lucide-react";
 
 type Demanda = { ingrediente: Ingrediente; necessario: number };
 
 export default function ComprasPage() {
   const [aba, setAba] = useState("lista");
   const [ingredientes, setIngredientes] = useState<Ingrediente[]>([]);
+  const [produtos, setProdutos] = useState<Produto[]>([]);
   const [manuais, setManuais] = useState<Compra[]>([]);
   const [demandaPedidos, setDemandaPedidos] = useState<Map<string, number>>(
     new Map()
@@ -41,14 +42,21 @@ export default function ComprasPage() {
   const [dialogManual, setDialogManual] = useState(false);
   const [descManual, setDescManual] = useState("");
 
-  // diálogo de ajuste de estoque
+  // diálogo de ajuste de estoque (ingredientes)
   const [ajustando, setAjustando] = useState<Ingrediente | null>(null);
   const [novoEstoque, setNovoEstoque] = useState("");
 
+  // diálogo de ajuste de estoque (produtos prontos)
+  const [ajustandoProduto, setAjustandoProduto] = useState<Produto | null>(
+    null
+  );
+  const [novoEstoqueProduto, setNovoEstoqueProduto] = useState("");
+
   const carregar = useCallback(async () => {
     const supabase = createClient();
-    const [ingRes, manRes, pedRes] = await Promise.all([
+    const [ingRes, prodRes, manRes, pedRes] = await Promise.all([
       supabase.from("ingredientes").select("*").order("nome"),
+      supabase.from("produtos").select("*").order("nome"),
       supabase
         .from("compras")
         .select("*, ingrediente:ingredientes(*)")
@@ -62,6 +70,7 @@ export default function ComprasPage() {
         .eq("status", "confirmado"),
     ]);
     setIngredientes((ingRes.data as Ingrediente[]) ?? []);
+    setProdutos((prodRes.data as Produto[]) ?? []);
     setManuais((manRes.data as Compra[]) ?? []);
 
     // demanda de ingredientes dos pedidos confirmados
@@ -166,6 +175,18 @@ export default function ComprasPage() {
     carregar();
   }
 
+  async function salvarAjusteProduto(e: React.FormEvent) {
+    e.preventDefault();
+    if (!ajustandoProduto) return;
+    const supabase = createClient();
+    await supabase
+      .from("produtos")
+      .update({ estoque_atual: parseDecimalSimples(novoEstoqueProduto) })
+      .eq("id", ajustandoProduto.id);
+    setAjustandoProduto(null);
+    carregar();
+  }
+
   return (
     <div>
       <PageHeader
@@ -191,10 +212,13 @@ export default function ComprasPage() {
       <Tabs value={aba} onValueChange={setAba} className="mb-4">
         <TabsList className="w-full">
           <TabsTrigger value="lista" className="flex-1">
-            Lista de compras
+            Compras
           </TabsTrigger>
           <TabsTrigger value="estoque" className="flex-1">
-            Estoque
+            Ingredientes
+          </TabsTrigger>
+          <TabsTrigger value="prontos" className="flex-1">
+            Prontos
           </TabsTrigger>
         </TabsList>
       </Tabs>
@@ -253,8 +277,11 @@ export default function ComprasPage() {
             </>
           )}
         </div>
-      ) : (
+      ) : aba === "estoque" ? (
         <div className="space-y-2">
+          <p className="mb-1 text-sm text-muted-foreground">
+            Matéria-prima usada nas receitas (farinha, leite, ovos, óleo...).
+          </p>
           {ingredientes.length === 0 ? (
             <EmptyState
               icone={Package}
@@ -279,6 +306,41 @@ export default function ComprasPage() {
                       setAjustando(ing);
                       setNovoEstoque(
                         String(ing.estoque_atual).replace(".", ",")
+                      );
+                    }}
+                  >
+                    Ajustar
+                  </Button>
+                </CardContent>
+              </Card>
+            ))
+          )}
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <p className="mb-1 text-sm text-muted-foreground">
+            Produtos prontos para vender (bolo, enroladinho, pão...),
+            creditados quando você registra uma produção.
+          </p>
+          {produtos.length === 0 ? (
+            <EmptyState icone={Croissant} titulo="Nenhum produto cadastrado" />
+          ) : (
+            produtos.map((p) => (
+              <Card key={p.id}>
+                <CardContent className="flex items-center justify-between gap-2 p-4">
+                  <div>
+                    <p className="font-medium">{p.nome}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {formatQtd(p.estoque_atual)} em estoque
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setAjustandoProduto(p);
+                      setNovoEstoqueProduto(
+                        String(p.estoque_atual).replace(".", ",")
                       );
                     }}
                   >
@@ -364,6 +426,31 @@ export default function ComprasPage() {
                 inputMode="decimal"
                 value={novoEstoque}
                 onChange={(e) => setNovoEstoque(e.target.value)}
+                required
+              />
+            </div>
+            <Button type="submit" className="w-full">
+              Salvar
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!ajustandoProduto}
+        onOpenChange={(aberto) => !aberto && setAjustandoProduto(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Ajustar estoque — {ajustandoProduto?.nome}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={salvarAjusteProduto} className="space-y-4">
+            <div className="space-y-2">
+              <Label>Quantidade em estoque</Label>
+              <Input
+                inputMode="decimal"
+                value={novoEstoqueProduto}
+                onChange={(e) => setNovoEstoqueProduto(e.target.value)}
                 required
               />
             </div>
