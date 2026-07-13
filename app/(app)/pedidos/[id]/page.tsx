@@ -14,6 +14,7 @@ import {
   PROXIMO_STATUS,
   STATUS_CORES,
   STATUS_LABELS,
+  type Cliente,
   type Pedido,
   type PedidoItem,
   type Produto,
@@ -64,7 +65,16 @@ import {
   Pencil,
   Plus,
   Trash2,
+  UserPlus,
 } from "lucide-react";
+
+const FORMAS_PAGAMENTO = [
+  "Pix",
+  "Dinheiro",
+  "Cartão de débito",
+  "Cartão de crédito",
+  "Transferência",
+];
 
 const STATUS_FINALIZADOS = ["entregue", "cancelado"];
 
@@ -88,24 +98,62 @@ export default function PedidoDetalhePage() {
 
   // formulário de edição
   const [editEntrega, setEditEntrega] = useState("");
+  const [editClienteId, setEditClienteId] = useState("");
+  const [editFormaPgto, setEditFormaPgto] = useState("");
   const [editDesconto, setEditDesconto] = useState("");
   const [editSinal, setEditSinal] = useState("");
   const [editObs, setEditObs] = useState("");
+  const [clientes, setClientes] = useState<Cliente[]>([]);
+
+  // cadastro rápido de cliente
+  const [dialogCliente, setDialogCliente] = useState(false);
+  const [novoClienteNome, setNovoClienteNome] = useState("");
+  const [novoClienteTel, setNovoClienteTel] = useState("");
+  const [criandoCliente, setCriandoCliente] = useState(false);
 
   const carregar = useCallback(async () => {
     const supabase = createClient();
-    const [pedRes, prodRes] = await Promise.all([
+    const [pedRes, prodRes, cliRes] = await Promise.all([
       supabase
         .from("pedidos")
         .select("*, cliente:clientes(*), itens:pedido_itens(*)")
         .eq("id", id)
         .single(),
       supabase.from("produtos").select("*").eq("ativo", true).order("nome"),
+      supabase.from("clientes").select("*").order("nome"),
     ]);
     setPedido(pedRes.data as Pedido);
     setProdutos((prodRes.data as Produto[]) ?? []);
+    setClientes((cliRes.data as Cliente[]) ?? []);
     setCarregando(false);
   }, [id]);
+
+  async function criarClienteRapido(e: React.FormEvent) {
+    e.preventDefault();
+    setCriandoCliente(true);
+    const supabase = createClient();
+    const { data, error } = await supabase
+      .from("clientes")
+      .insert({
+        nome: novoClienteNome.trim(),
+        telefone: novoClienteTel.trim() || null,
+      })
+      .select()
+      .single();
+    setCriandoCliente(false);
+    if (error || !data) {
+      toast.error("Erro ao cadastrar cliente");
+      return;
+    }
+    setClientes((lista) =>
+      [...lista, data as Cliente].sort((a, b) => a.nome.localeCompare(b.nome))
+    );
+    setEditClienteId(data.id);
+    setDialogCliente(false);
+    setNovoClienteNome("");
+    setNovoClienteTel("");
+    toast.success(`Cliente ${data.nome} cadastrado`);
+  }
 
   useEffect(() => {
     carregar();
@@ -276,6 +324,8 @@ export default function PedidoDetalhePage() {
 
   function abrirEditar() {
     setEditEntrega(isoParaDataHora(pedido?.data_entrega ?? null));
+    setEditClienteId(pedido?.cliente_id ?? "");
+    setEditFormaPgto(pedido?.forma_pagamento ?? "");
     setEditDesconto(String(pedido?.desconto ?? 0).replace(".", ","));
     setEditSinal(String(pedido?.sinal ?? 0).replace(".", ","));
     setEditObs(pedido?.observacoes ?? "");
@@ -294,6 +344,8 @@ export default function PedidoDetalhePage() {
       .from("pedidos")
       .update({
         data_entrega: entregaISO,
+        cliente_id: editClienteId || null,
+        forma_pagamento: editFormaPgto || null,
         desconto: parseDecimalSimples(editDesconto),
         sinal: parseDecimalSimples(editSinal),
         observacoes: editObs.trim() || null,
@@ -309,7 +361,11 @@ export default function PedidoDetalhePage() {
 
   function textoOrcamento(): string {
     const linhas: string[] = [];
-    linhas.push("🌾 *Orçamento — Maná · Pães & Mais*");
+    linhas.push(
+      pedido?.status === "orcamento"
+        ? "🌾 *Orçamento — Maná · Pães & Mais*"
+        : "🌾 *Seu pedido — Maná · Pães & Mais*"
+    );
     linhas.push("");
     if (pedido?.cliente?.nome) linhas.push(`Cliente: ${pedido.cliente.nome}`);
     if (pedido?.data_entrega)
@@ -380,17 +436,17 @@ export default function PedidoDetalhePage() {
               Marcar como {STATUS_LABELS[proximo].toLowerCase()}
             </Button>
           )}
-          {pedido.status === "orcamento" && (
-            <Button
-              size="lg"
-              variant="outline"
-              className="border-green-300 text-green-700 hover:bg-green-50"
-              onClick={enviarWhatsApp}
-            >
-              <MessageCircle className="size-5" />
-              Enviar orçamento no WhatsApp
-            </Button>
-          )}
+          <Button
+            size="lg"
+            variant="outline"
+            className="border-green-300 text-green-700 hover:bg-green-50"
+            onClick={enviarWhatsApp}
+          >
+            <MessageCircle className="size-5" />
+            {pedido.status === "orcamento"
+              ? "Enviar orçamento no WhatsApp"
+              : "Enviar resumo no WhatsApp"}
+          </Button>
         </div>
       )}
 
@@ -475,6 +531,12 @@ export default function PedidoDetalhePage() {
                 {pedido.pago ? "✓" : formatBRL(saldo)}
               </span>
             </div>
+            {pedido.forma_pagamento && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Pagamento</span>
+                <span>{pedido.forma_pagamento}</span>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -587,8 +649,70 @@ export default function PedidoDetalhePage() {
           </DialogHeader>
           <form onSubmit={salvarEdicao} className="space-y-4">
             <div className="space-y-2">
+              <Label>Cliente</Label>
+              <div className="flex gap-2">
+                <Select
+                  value={editClienteId}
+                  onValueChange={(v) => {
+                    if (v === "__novo__") {
+                      setDialogCliente(true);
+                      return;
+                    }
+                    setEditClienteId(v === "__nenhum__" ? "" : v);
+                  }}
+                >
+                  <SelectTrigger className="flex-1">
+                    <SelectValue placeholder="Sem cliente">
+                      {clientes.find((c) => c.id === editClienteId)?.nome}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__novo__">
+                      ➕ Cadastrar novo cliente
+                    </SelectItem>
+                    <SelectItem value="__nenhum__">Sem cliente</SelectItem>
+                    {clientes.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.nome}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="shrink-0"
+                  onClick={() => setDialogCliente(true)}
+                >
+                  <UserPlus className="size-4" />
+                </Button>
+              </div>
+            </div>
+            <div className="space-y-2">
               <Label>Data e hora da entrega</Label>
               <DataHoraInput value={editEntrega} onChange={setEditEntrega} />
+            </div>
+            <div className="space-y-2">
+              <Label>Forma de pagamento</Label>
+              <Select
+                value={editFormaPgto || "__nenhuma__"}
+                onValueChange={(v) =>
+                  setEditFormaPgto(v === "__nenhuma__" ? "" : v)
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Não definida" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__nenhuma__">Não definida</SelectItem>
+                  {FORMAS_PAGAMENTO.map((f) => (
+                    <SelectItem key={f} value={f}>
+                      {f}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
@@ -618,6 +742,38 @@ export default function PedidoDetalhePage() {
             </div>
             <Button type="submit" className="w-full">
               Salvar
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={dialogCliente} onOpenChange={setDialogCliente}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Novo cliente</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={criarClienteRapido} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="nc-nome">Nome</Label>
+              <Input
+                id="nc-nome"
+                value={novoClienteNome}
+                onChange={(e) => setNovoClienteNome(e.target.value)}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="nc-tel">Telefone / WhatsApp</Label>
+              <Input
+                id="nc-tel"
+                inputMode="tel"
+                value={novoClienteTel}
+                onChange={(e) => setNovoClienteTel(e.target.value)}
+                placeholder="(62) 99999-9999"
+              />
+            </div>
+            <Button type="submit" className="w-full" disabled={criandoCliente}>
+              {criandoCliente ? "Cadastrando..." : "Cadastrar e usar no pedido"}
             </Button>
           </form>
         </DialogContent>

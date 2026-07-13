@@ -31,6 +31,16 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { addMonths, endOfMonth, format, startOfMonth, subMonths } from "date-fns";
 import {
@@ -48,6 +58,9 @@ export default function FinanceiroPage() {
   const [movimentos, setMovimentos] = useState<MovimentoFinanceiro[]>([]);
   const [aReceber, setAReceber] = useState<Pedido[]>([]);
   const [dialogAberto, setDialogAberto] = useState(false);
+  const [excluindoMov, setExcluindoMov] = useState<MovimentoFinanceiro | null>(
+    null
+  );
 
   const [tipo, setTipo] = useState<"entrada" | "saida">("saida");
   const [categoria, setCategoria] = useState("outros");
@@ -117,9 +130,15 @@ export default function FinanceiroPage() {
     carregar();
   }
 
-  async function excluir(m: MovimentoFinanceiro) {
+  async function excluir() {
+    if (!excluindoMov) return;
     const supabase = createClient();
-    await supabase.from("movimentos_financeiros").delete().eq("id", m.id);
+    await supabase
+      .from("movimentos_financeiros")
+      .delete()
+      .eq("id", excluindoMov.id);
+    setExcluindoMov(null);
+    toast.success("Lançamento excluído");
     carregar();
   }
 
@@ -257,7 +276,7 @@ export default function FinanceiroPage() {
                       variant="ghost"
                       size="icon"
                       className="size-7"
-                      onClick={() => excluir(m)}
+                      onClick={() => setExcluindoMov(m)}
                     >
                       <Trash2 className="size-3.5 text-destructive" />
                     </Button>
@@ -343,6 +362,27 @@ export default function FinanceiroPage() {
           </form>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog
+        open={!!excluindoMov}
+        onOpenChange={(aberto) => !aberto && setExcluindoMov(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir lançamento?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {excluindoMov?.tipo === "entrada" ? "Entrada" : "Saída"} de{" "}
+              {formatBRL(excluindoMov?.valor ?? 0)}
+              {excluindoMov?.descricao ? ` — ${excluindoMov.descricao}` : ""}.
+              Essa ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={excluir}>Excluir</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

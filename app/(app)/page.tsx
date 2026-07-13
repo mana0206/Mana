@@ -22,6 +22,7 @@ import {
   AlertTriangle,
   ClipboardList,
   Plus,
+  ShoppingCart,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { startOfMonth, endOfMonth, format } from "date-fns";
@@ -224,7 +225,7 @@ export default function DashboardPage() {
           </Button>
           <Button asChild variant="outline" className="h-auto justify-start py-3">
             <Link href="/compras">
-              <AlertTriangle className="size-4 text-primary" />
+              <ShoppingCart className="size-4 text-primary" />
               Lista de compras
             </Link>
           </Button>
