@@ -349,6 +349,11 @@ export default function ProdutosPage() {
                     <SelectValue placeholder="Escolha a receita..." />
                   </SelectTrigger>
                   <SelectContent>
+                    {receitas.length === 0 && (
+                      <SelectItem value="__vazio__" disabled>
+                        Nenhuma receita — crie na tela Receitas
+                      </SelectItem>
+                    )}
                     {receitas.map((r) => (
                       <SelectItem key={r.id} value={r.id}>
                         {r.nome} (

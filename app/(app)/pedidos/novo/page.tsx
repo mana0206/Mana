@@ -28,9 +28,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
-import { ArrowLeft, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, UserPlus } from "lucide-react";
 
 type ReceitaComItens = Receita & { itens: ReceitaIngrediente[] };
 
@@ -55,6 +61,39 @@ export default function NovoPedidoPage() {
   const [desconto, setDesconto] = useState("");
   const [sinal, setSinal] = useState("");
   const [observacoes, setObservacoes] = useState("");
+
+  // cadastro rápido de cliente sem sair do pedido
+  const [dialogCliente, setDialogCliente] = useState(false);
+  const [novoClienteNome, setNovoClienteNome] = useState("");
+  const [novoClienteTel, setNovoClienteTel] = useState("");
+  const [criandoCliente, setCriandoCliente] = useState(false);
+
+  async function criarClienteRapido(e: React.FormEvent) {
+    e.preventDefault();
+    setCriandoCliente(true);
+    const supabase = createClient();
+    const { data, error } = await supabase
+      .from("clientes")
+      .insert({
+        nome: novoClienteNome.trim(),
+        telefone: novoClienteTel.trim() || null,
+      })
+      .select()
+      .single();
+    setCriandoCliente(false);
+    if (error || !data) {
+      toast.error("Erro ao cadastrar cliente");
+      return;
+    }
+    setClientes((lista) =>
+      [...lista, data as Cliente].sort((a, b) => a.nome.localeCompare(b.nome))
+    );
+    setClienteId(data.id);
+    setDialogCliente(false);
+    setNovoClienteNome("");
+    setNovoClienteTel("");
+    toast.success(`Cliente ${data.nome} cadastrado`);
+  }
 
   useEffect(() => {
     async function carregar() {
@@ -183,18 +222,43 @@ export default function NovoPedidoPage() {
           <CardContent className="space-y-4 p-4">
             <div className="space-y-2">
               <Label>Cliente</Label>
-              <Select value={clienteId} onValueChange={setClienteId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Escolha o cliente (opcional)" />
-                </SelectTrigger>
-                <SelectContent>
-                  {clientes.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.nome}
+              <div className="flex gap-2">
+                <Select
+                  value={clienteId}
+                  onValueChange={(v) => {
+                    if (v === "__novo__") {
+                      setDialogCliente(true);
+                      return;
+                    }
+                    setClienteId(v);
+                  }}
+                >
+                  <SelectTrigger className="flex-1">
+                    <SelectValue placeholder="Escolha o cliente (opcional)">
+                      {clientes.find((c) => c.id === clienteId)?.nome}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__novo__">
+                      ➕ Cadastrar novo cliente
                     </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                    {clientes.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.nome}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="shrink-0"
+                  onClick={() => setDialogCliente(true)}
+                >
+                  <UserPlus className="size-4" />
+                </Button>
+              </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="entrega">Data e hora da entrega</Label>
@@ -239,6 +303,11 @@ export default function NovoPedidoPage() {
                         <SelectValue placeholder="Produto do catálogo..." />
                       </SelectTrigger>
                       <SelectContent>
+                        {produtos.length === 0 && (
+                          <SelectItem value="__vazio__" disabled>
+                            Nenhum produto cadastrado — preencha a descrição
+                          </SelectItem>
+                        )}
                         {produtos.map((p) => (
                           <SelectItem key={p.id} value={p.id}>
                             {p.nome} ({formatBRL(precoDoProduto(p))})
@@ -345,6 +414,38 @@ export default function NovoPedidoPage() {
           {salvando ? "Salvando..." : "Criar pedido"}
         </Button>
       </form>
+
+      <Dialog open={dialogCliente} onOpenChange={setDialogCliente}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Novo cliente</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={criarClienteRapido} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="nc-nome">Nome</Label>
+              <Input
+                id="nc-nome"
+                value={novoClienteNome}
+                onChange={(e) => setNovoClienteNome(e.target.value)}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="nc-tel">Telefone / WhatsApp</Label>
+              <Input
+                id="nc-tel"
+                inputMode="tel"
+                value={novoClienteTel}
+                onChange={(e) => setNovoClienteTel(e.target.value)}
+                placeholder="(62) 99999-9999"
+              />
+            </div>
+            <Button type="submit" className="w-full" disabled={criandoCliente}>
+              {criandoCliente ? "Cadastrando..." : "Cadastrar e usar no pedido"}
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

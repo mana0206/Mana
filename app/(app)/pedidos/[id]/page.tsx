@@ -529,6 +529,11 @@ export default function PedidoDetalhePage() {
                   <SelectValue placeholder="Escolher do catálogo..." />
                 </SelectTrigger>
                 <SelectContent>
+                  {produtos.length === 0 && (
+                    <SelectItem value="__vazio__" disabled>
+                      Nenhum produto cadastrado — preencha a descrição
+                    </SelectItem>
+                  )}
                   {produtos.map((p) => (
                     <SelectItem key={p.id} value={p.id}>
                       {p.nome}
