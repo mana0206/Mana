@@ -137,11 +137,14 @@ export default function ConfigPage() {
                 <div className="flex shrink-0 items-center gap-1">
                   <Switch
                     checked={c.ativo}
+                    aria-label={`Ativar ou desativar ${c.nome}`}
                     onCheckedChange={(v) => alternarAtivo(c, v)}
                   />
                   <Button
                     variant="ghost"
                     size="icon"
+                    className="size-11"
+                    aria-label={`Editar ${c.nome}`}
                     onClick={() => abrirEdicao(c)}
                   >
                     <Pencil className="size-4" />
@@ -149,6 +152,8 @@ export default function ConfigPage() {
                   <Button
                     variant="ghost"
                     size="icon"
+                    className="size-11"
+                    aria-label={`Excluir ${c.nome}`}
                     onClick={() => excluir(c)}
                   >
                     <Trash2 className="size-4 text-destructive" />

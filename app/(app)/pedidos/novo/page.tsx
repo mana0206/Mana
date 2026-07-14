@@ -168,8 +168,7 @@ export default function NovoPedidoPage() {
   );
   const total = Math.max(0, subtotal - parseDecimalSimples(desconto));
 
-  async function salvar(e: React.FormEvent) {
-    e.preventDefault();
+  async function salvar(statusInicial: "orcamento" | "confirmado") {
     const itensValidos = itens.filter(
       (it) => it.descricao.trim() && parseDecimalSimples(it.quantidade) > 0
     );
@@ -192,7 +191,7 @@ export default function NovoPedidoPage() {
         desconto: parseDecimalSimples(desconto),
         sinal: parseDecimalSimples(sinal),
         observacoes: observacoes.trim() || null,
-        status: "orcamento",
+        status: statusInicial,
       })
       .select()
       .single();
@@ -210,23 +209,48 @@ export default function NovoPedidoPage() {
         preco_unitario: parseDecimalSimples(it.preco_unitario),
       }))
     );
-    setSalvando(false);
     if (erroItens) {
+      setSalvando(false);
       toast.error("Pedido criado, mas houve erro ao salvar itens");
+      router.push(`/pedidos/${pedido.id}`);
+      return;
     }
+    // encomenda já fechada (confirmado) lança o sinal no financeiro de imediato
+    if (statusInicial === "confirmado" && parseDecimalSimples(sinal) > 0) {
+      await supabase.from("movimentos_financeiros").insert({
+        tipo: "entrada",
+        categoria: "sinal",
+        valor: parseDecimalSimples(sinal),
+        descricao: `Sinal — pedido novo`,
+        pedido_id: pedido.id,
+      });
+    }
+    setSalvando(false);
     router.push(`/pedidos/${pedido.id}`);
   }
 
   return (
     <div className="space-y-5">
       <div className="flex items-center gap-2">
-        <Button variant="ghost" size="icon" onClick={() => router.back()}>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-11"
+          aria-label="Voltar"
+          onClick={() => router.back()}
+        >
           <ArrowLeft className="size-5" />
         </Button>
         <h1 className="font-serif text-2xl text-primary">Novo pedido</h1>
       </div>
 
-      <form onSubmit={salvar} className="space-y-5">
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          salvar("orcamento");
+        }}
+        className="space-y-5"
+      >
         <Card>
           <CardContent className="space-y-4 p-4">
             <div className="space-y-2">
@@ -262,7 +286,8 @@ export default function NovoPedidoPage() {
                   type="button"
                   variant="outline"
                   size="icon"
-                  className="shrink-0"
+                  className="size-11 shrink-0"
+                  aria-label="Cadastrar novo cliente"
                   onClick={() => setDialogCliente(true)}
                 >
                   <UserPlus className="size-4" />
@@ -328,7 +353,8 @@ export default function NovoPedidoPage() {
                     type="button"
                     variant="ghost"
                     size="icon"
-                    className="shrink-0"
+                    className="size-11 shrink-0"
+                    aria-label="Remover item"
                     onClick={() => setItens(itens.filter((_, i) => i !== idx))}
                   >
                     <Trash2 className="size-4 text-destructive" />
@@ -418,9 +444,26 @@ export default function NovoPedidoPage() {
           </CardContent>
         </Card>
 
-        <Button type="submit" className="w-full" size="lg" disabled={salvando}>
-          {salvando ? "Salvando..." : "Criar pedido"}
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            type="submit"
+            variant="outline"
+            className="flex-1"
+            size="lg"
+            disabled={salvando}
+          >
+            {salvando ? "Salvando..." : "Salvar como orçamento"}
+          </Button>
+          <Button
+            type="button"
+            className="flex-1"
+            size="lg"
+            disabled={salvando}
+            onClick={() => salvar("confirmado")}
+          >
+            {salvando ? "Salvando..." : "Salvar já confirmado"}
+          </Button>
+        </div>
       </form>
 
       <Dialog open={dialogCliente} onOpenChange={setDialogCliente}>

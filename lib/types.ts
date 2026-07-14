@@ -146,13 +146,15 @@ export const STATUS_LABELS: Record<PedidoStatus, string> = {
   cancelado: "Cancelado",
 };
 
+// Paleta da marca (Guia de Marca): dourado trigo #b3a268, sálvia #8c9a5d,
+// oliva #586b32, oliva escuro #3a4720.
 export const STATUS_CORES: Record<PedidoStatus, string> = {
-  orcamento: "bg-amber-100 text-amber-800 border-amber-200",
-  confirmado: "bg-blue-100 text-blue-800 border-blue-200",
-  em_producao: "bg-purple-100 text-purple-800 border-purple-200",
-  pronto: "bg-teal-100 text-teal-800 border-teal-200",
-  entregue: "bg-green-100 text-green-800 border-green-200",
-  cancelado: "bg-gray-100 text-gray-500 border-gray-200",
+  orcamento: "bg-[#b3a268]/15 text-[#8a7a3f] border-[#b3a268]/40",
+  confirmado: "bg-[#8c9a5d]/15 text-[#5f6a3d] border-[#8c9a5d]/40",
+  em_producao: "bg-[#586b32]/15 text-[#586b32] border-[#586b32]/40",
+  pronto: "bg-[#b3a268]/25 text-[#6b5e2e] border-[#b3a268]/50",
+  entregue: "bg-[#3a4720]/15 text-[#3a4720] border-[#3a4720]/40",
+  cancelado: "bg-muted text-muted-foreground border-border",
 };
 
 export const PROXIMO_STATUS: Partial<Record<PedidoStatus, PedidoStatus>> = {
@@ -160,6 +162,13 @@ export const PROXIMO_STATUS: Partial<Record<PedidoStatus, PedidoStatus>> = {
   confirmado: "em_producao",
   em_producao: "pronto",
   pronto: "entregue",
+};
+
+export const STATUS_ANTERIOR: Partial<Record<PedidoStatus, PedidoStatus>> = {
+  confirmado: "orcamento",
+  em_producao: "confirmado",
+  pronto: "em_producao",
+  entregue: "pronto",
 };
 
 export const CATEGORIAS_ENTRADA = ["venda", "sinal", "outros"];

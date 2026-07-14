@@ -82,6 +82,8 @@ function formatarComData(data: Date, hora: string): string {
   return `${p(data.getDate())}/${p(data.getMonth() + 1)}/${p(data.getFullYear() % 100)} ${hh ?? "00"}:${min ?? "00"}`;
 }
 
+const HORARIOS_COMUNS = ["08:00", "12:00", "15:00", "18:00"];
+
 export function DataHoraInput({
   value,
   onChange,
@@ -112,7 +114,13 @@ export function DataHoraInput({
         />
         <Popover open={popoverAberto} onOpenChange={setPopoverAberto}>
           <PopoverTrigger asChild>
-            <Button type="button" variant="outline" size="icon" className="shrink-0">
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="size-11 shrink-0"
+              aria-label="Escolher data e hora no calendário"
+            >
               <CalendarIcon className="size-4" />
             </Button>
           </PopoverTrigger>
@@ -127,24 +135,49 @@ export function DataHoraInput({
               }}
               autoFocus
             />
-            <div className="flex items-center gap-2 border-t p-3">
-              <label className="text-sm text-muted-foreground">Hora</label>
-              <Input
-                type="time"
-                className="flex-1"
-                value={hora}
-                onChange={(e) => {
-                  const base = dataSelecionada ?? new Date();
-                  onChange(formatarComData(base, e.target.value));
-                }}
-              />
-              <Button
-                type="button"
-                size="sm"
-                onClick={() => setPopoverAberto(false)}
-              >
-                OK
-              </Button>
+            <div className="space-y-2 border-t p-3">
+              <div className="flex flex-wrap gap-1.5">
+                {HORARIOS_COMUNS.map((h) => (
+                  <button
+                    key={h}
+                    type="button"
+                    onClick={() => {
+                      const base = dataSelecionada ?? new Date();
+                      onChange(formatarComData(base, h));
+                    }}
+                    className={cn(
+                      "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+                      hora === h
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-border hover:bg-accent"
+                    )}
+                  >
+                    {h}
+                  </button>
+                ))}
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-sm text-muted-foreground" htmlFor="hora-personalizada">
+                  Hora
+                </label>
+                <Input
+                  id="hora-personalizada"
+                  type="time"
+                  className="flex-1"
+                  value={hora}
+                  onChange={(e) => {
+                    const base = dataSelecionada ?? new Date();
+                    onChange(formatarComData(base, e.target.value));
+                  }}
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => setPopoverAberto(false)}
+                >
+                  OK
+                </Button>
+              </div>
             </div>
           </PopoverContent>
         </Popover>

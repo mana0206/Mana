@@ -217,6 +217,8 @@ export default function IngredientesPage() {
                     <Button
                       variant="ghost"
                       size="icon"
+                      className="size-11"
+                      aria-label={`Editar ${ing.nome}`}
                       onClick={() => abrirEdicao(ing)}
                     >
                       <Pencil className="size-4" />
@@ -224,6 +226,8 @@ export default function IngredientesPage() {
                     <Button
                       variant="ghost"
                       size="icon"
+                      className="size-11"
+                      aria-label={`Excluir ${ing.nome}`}
                       onClick={() => setExcluindo(ing)}
                     >
                       <Trash2 className="size-4 text-destructive" />

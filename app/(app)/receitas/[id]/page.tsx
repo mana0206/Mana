@@ -211,7 +211,13 @@ export default function ReceitaDetalhePage() {
   return (
     <div className="space-y-5">
       <div className="flex items-center gap-2">
-        <Button variant="ghost" size="icon" onClick={() => router.back()}>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-11"
+          aria-label="Voltar"
+          onClick={() => router.back()}
+        >
           <ArrowLeft className="size-5" />
         </Button>
         <h1 className="flex-1 truncate font-serif text-2xl text-primary">
@@ -220,6 +226,8 @@ export default function ReceitaDetalhePage() {
         <Button
           variant="ghost"
           size="icon"
+          className="size-11"
+          aria-label="Excluir receita"
           onClick={() => setConfirmaExcluir(true)}
         >
           <Trash2 className="size-4 text-destructive" />
@@ -304,7 +312,8 @@ export default function ReceitaDetalhePage() {
               <Button
                 variant="ghost"
                 size="icon"
-                className="size-8 shrink-0"
+                className="size-11 shrink-0"
+                aria-label={`Remover ${item.ingrediente?.nome}`}
                 onClick={() => removerItem(item.id)}
               >
                 <Trash2 className="size-3.5 text-destructive" />

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { totalPedido } from "@/lib/calc";
@@ -15,35 +15,57 @@ import { EmptyState } from "@/components/empty-state";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, ClipboardList } from "lucide-react";
+import { Plus, ClipboardList, RotateCw, WifiOff } from "lucide-react";
 
 const ATIVOS = ["orcamento", "confirmado", "em_producao", "pronto"];
 
 export default function PedidosPage() {
   const [carregando, setCarregando] = useState(true);
+  const [erro, setErro] = useState(false);
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [aba, setAba] = useState("ativos");
+  const [busca, setBusca] = useState("");
 
-  useEffect(() => {
-    async function carregar() {
-      const supabase = createClient();
-      const { data } = await supabase
-        .from("pedidos")
-        .select("*, cliente:clientes(*), itens:pedido_itens(*)")
-        .order("data_entrega", { ascending: true, nullsFirst: false });
-      setPedidos((data as Pedido[]) ?? []);
+  const carregar = useCallback(async () => {
+    setCarregando(true);
+    setErro(false);
+    const supabase = createClient();
+    const { data, error } = await supabase
+      .from("pedidos")
+      .select("*, cliente:clientes(*), itens:pedido_itens(*)")
+      .order("data_entrega", { ascending: true, nullsFirst: false });
+    if (error) {
+      setErro(true);
       setCarregando(false);
+      return;
     }
-    carregar();
+    setPedidos((data as Pedido[]) ?? []);
+    setCarregando(false);
   }, []);
 
-  const filtrados = pedidos.filter((p) =>
-    aba === "ativos"
-      ? ATIVOS.includes(p.status)
-      : !ATIVOS.includes(p.status)
-  );
+  useEffect(() => {
+    carregar();
+  }, [carregar]);
+
+  const filtrados = useMemo(() => {
+    const buscaNorm = busca.trim().toLowerCase();
+    return pedidos.filter((p) => {
+      const doStatus =
+        aba === "ativos"
+          ? ATIVOS.includes(p.status)
+          : !ATIVOS.includes(p.status);
+      if (!doStatus) return false;
+      if (!buscaNorm) return true;
+      const noCliente = p.cliente?.nome?.toLowerCase().includes(buscaNorm);
+      const noItem = (p.itens ?? []).some((i) =>
+        i.descricao.toLowerCase().includes(buscaNorm)
+      );
+      return noCliente || noItem;
+    });
+  }, [pedidos, aba, busca]);
 
   return (
     <div>
@@ -57,6 +79,13 @@ export default function PedidosPage() {
             </Link>
           </Button>
         }
+      />
+
+      <Input
+        placeholder="Buscar por cliente ou item..."
+        value={busca}
+        onChange={(e) => setBusca(e.target.value)}
+        className="mb-3"
       />
 
       <Tabs value={aba} onValueChange={setAba} className="mb-4">
@@ -76,15 +105,30 @@ export default function PedidosPage() {
             <Skeleton key={i} className="h-24" />
           ))}
         </div>
+      ) : erro ? (
+        <div className="flex flex-col items-center gap-3 py-10 text-center">
+          <WifiOff className="size-8 text-muted-foreground/60" />
+          <p className="font-medium text-muted-foreground">Sem conexão</p>
+          <Button variant="outline" size="sm" onClick={carregar}>
+            <RotateCw className="size-4" />
+            Tentar de novo
+          </Button>
+        </div>
       ) : filtrados.length === 0 ? (
         <EmptyState
           icone={ClipboardList}
           titulo={
-            aba === "ativos"
-              ? "Nenhum pedido ativo"
-              : "Nenhum pedido concluído"
+            busca
+              ? "Nenhum pedido encontrado"
+              : aba === "ativos"
+                ? "Nenhum pedido ativo"
+                : "Nenhum pedido concluído"
           }
-          descricao="Toque em Novo para registrar uma encomenda ou orçamento."
+          descricao={
+            busca
+              ? "Tente buscar por outro nome ou item."
+              : "Toque em Novo para registrar uma encomenda ou orçamento."
+          }
         />
       ) : (
         <div className="space-y-2">

@@ -223,7 +223,13 @@ export default function ImportarNotaPage() {
     return (
       <div className="space-y-5">
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon" onClick={() => router.back()}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-11"
+            aria-label="Voltar"
+            onClick={() => router.back()}
+          >
             <ArrowLeft className="size-5" />
           </Button>
           <h1 className="font-serif text-2xl text-primary">Importar nota (QR)</h1>
@@ -298,7 +304,13 @@ export default function ImportarNotaPage() {
     return (
       <div className="space-y-5">
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon" onClick={() => setEtapa("entrada")}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-11"
+            aria-label="Voltar"
+            onClick={() => setEtapa("entrada")}
+          >
             <ArrowLeft className="size-5" />
           </Button>
           <div className="min-w-0 flex-1">

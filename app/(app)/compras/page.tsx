@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
   DialogContent,
@@ -20,7 +21,15 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import Link from "next/link";
-import { Plus, ShoppingCart, Package, QrCode, Croissant } from "lucide-react";
+import {
+  Plus,
+  ShoppingCart,
+  Package,
+  QrCode,
+  Croissant,
+  RotateCw,
+  WifiOff,
+} from "lucide-react";
 
 type Demanda = { ingrediente: Ingrediente; necessario: number };
 
@@ -33,10 +42,15 @@ export default function ComprasPage() {
     new Map()
   );
 
+  const [carregando, setCarregando] = useState(true);
+  const [erro, setErro] = useState(false);
+
   // diálogo de compra efetuada (item automático)
   const [comprando, setComprando] = useState<Demanda | null>(null);
   const [qtdComprada, setQtdComprada] = useState("");
   const [valorCompra, setValorCompra] = useState("");
+  const [novaEmbalagemQtd, setNovaEmbalagemQtd] = useState("");
+  const [processandoCompra, setProcessandoCompra] = useState(false);
 
   // diálogo de item manual
   const [dialogManual, setDialogManual] = useState(false);
@@ -45,14 +59,18 @@ export default function ComprasPage() {
   // diálogo de ajuste de estoque (ingredientes)
   const [ajustando, setAjustando] = useState<Ingrediente | null>(null);
   const [novoEstoque, setNovoEstoque] = useState("");
+  const [motivoAjuste, setMotivoAjuste] = useState("");
 
   // diálogo de ajuste de estoque (produtos prontos)
   const [ajustandoProduto, setAjustandoProduto] = useState<Produto | null>(
     null
   );
   const [novoEstoqueProduto, setNovoEstoqueProduto] = useState("");
+  const [motivoAjusteProduto, setMotivoAjusteProduto] = useState("");
 
   const carregar = useCallback(async () => {
+    setCarregando(true);
+    setErro(false);
     const supabase = createClient();
     const [ingRes, prodRes, manRes, pedRes] = await Promise.all([
       supabase.from("ingredientes").select("*").order("nome"),
@@ -69,6 +87,11 @@ export default function ComprasPage() {
         )
         .eq("status", "confirmado"),
     ]);
+    if (ingRes.error || prodRes.error || manRes.error || pedRes.error) {
+      setErro(true);
+      setCarregando(false);
+      return;
+    }
     setIngredientes((ingRes.data as Ingrediente[]) ?? []);
     setProdutos((prodRes.data as Produto[]) ?? []);
     setManuais((manRes.data as Compra[]) ?? []);
@@ -101,6 +124,7 @@ export default function ComprasPage() {
       }
     }
     setDemandaPedidos(demanda);
+    setCarregando(false);
   }, []);
 
   useEffect(() => {
@@ -121,29 +145,60 @@ export default function ComprasPage() {
     setComprando(d);
     setQtdComprada(String(Math.ceil(d.necessario)));
     setValorCompra("");
+    setNovaEmbalagemQtd("");
   }
 
   async function confirmarCompra(e: React.FormEvent) {
     e.preventDefault();
     if (!comprando) return;
+    setProcessandoCompra(true);
     const supabase = createClient();
     const qtd = parseDecimalSimples(qtdComprada);
     const valor = parseDecimalSimples(valorCompra);
-    await supabase
-      .from("ingredientes")
-      .update({
-        estoque_atual: comprando.ingrediente.estoque_atual + qtd,
-      })
-      .eq("id", comprando.ingrediente.id);
-    if (valor > 0) {
-      await supabase.from("movimentos_financeiros").insert({
-        tipo: "saida",
-        categoria: "ingredientes",
-        valor,
-        descricao: `Compra — ${comprando.ingrediente.nome}`,
-      });
+    const conteudoEmbalagem = parseDecimalSimples(novaEmbalagemQtd);
+
+    const atualizacaoEstoque: Record<string, number> = {
+      estoque_atual: comprando.ingrediente.estoque_atual + qtd,
+    };
+    // se informou o conteúdo da embalagem e o valor pago, recalcula o
+    // custo do ingrediente pela compra mais recente (correção: antes só
+    // a importação de nota QR atualizava o custo, deixando a ficha
+    // técnica com preço defasado quando a compra era manual)
+    if (conteudoEmbalagem > 0 && valor > 0) {
+      atualizacaoEstoque.preco_compra = valor;
+      atualizacaoEstoque.quantidade_embalagem = conteudoEmbalagem;
     }
-    toast.success("Estoque atualizado" + (valor > 0 ? " e gasto lançado" : ""));
+
+    const { error: erroEstoque } = await supabase
+      .from("ingredientes")
+      .update(atualizacaoEstoque)
+      .eq("id", comprando.ingrediente.id);
+    if (erroEstoque) {
+      setProcessandoCompra(false);
+      toast.error("Erro ao atualizar o estoque");
+      return;
+    }
+    if (valor > 0) {
+      const { error: erroMov } = await supabase
+        .from("movimentos_financeiros")
+        .insert({
+          tipo: "saida",
+          categoria: "ingredientes",
+          valor,
+          descricao: `Compra — ${comprando.ingrediente.nome}`,
+        });
+      if (erroMov) {
+        setProcessandoCompra(false);
+        toast.error("Estoque atualizado, mas houve erro ao lançar o gasto");
+        return;
+      }
+    }
+    setProcessandoCompra(false);
+    toast.success(
+      "Estoque atualizado" +
+        (valor > 0 ? " e gasto lançado" : "") +
+        (conteudoEmbalagem > 0 && valor > 0 ? " · custo recalculado" : "")
+    );
     setComprando(null);
     carregar();
   }
@@ -151,7 +206,13 @@ export default function ComprasPage() {
   async function adicionarManual(e: React.FormEvent) {
     e.preventDefault();
     const supabase = createClient();
-    await supabase.from("compras").insert({ descricao: descManual.trim() });
+    const { error } = await supabase
+      .from("compras")
+      .insert({ descricao: descManual.trim() });
+    if (error) {
+      toast.error("Erro ao adicionar item");
+      return;
+    }
     setDescManual("");
     setDialogManual(false);
     carregar();
@@ -159,7 +220,14 @@ export default function ComprasPage() {
 
   async function marcarManualComprado(item: Compra) {
     const supabase = createClient();
-    await supabase.from("compras").update({ comprado: true }).eq("id", item.id);
+    const { error } = await supabase
+      .from("compras")
+      .update({ comprado: true })
+      .eq("id", item.id);
+    if (error) {
+      toast.error("Erro ao marcar como comprado");
+      return;
+    }
     carregar();
   }
 
@@ -167,11 +235,23 @@ export default function ComprasPage() {
     e.preventDefault();
     if (!ajustando) return;
     const supabase = createClient();
-    await supabase
+    const novoValor = parseDecimalSimples(novoEstoque);
+    const { error } = await supabase
       .from("ingredientes")
-      .update({ estoque_atual: parseDecimalSimples(novoEstoque) })
+      .update({ estoque_atual: novoValor })
       .eq("id", ajustando.id);
+    if (error) {
+      toast.error("Erro ao ajustar o estoque");
+      return;
+    }
+    await supabase.from("ajustes_estoque").insert({
+      ingrediente_id: ajustando.id,
+      estoque_anterior: ajustando.estoque_atual,
+      estoque_novo: novoValor,
+      motivo: motivoAjuste.trim() || null,
+    });
     setAjustando(null);
+    setMotivoAjuste("");
     carregar();
   }
 
@@ -179,11 +259,23 @@ export default function ComprasPage() {
     e.preventDefault();
     if (!ajustandoProduto) return;
     const supabase = createClient();
-    await supabase
+    const novoValor = parseDecimalSimples(novoEstoqueProduto);
+    const { error } = await supabase
       .from("produtos")
-      .update({ estoque_atual: parseDecimalSimples(novoEstoqueProduto) })
+      .update({ estoque_atual: novoValor })
       .eq("id", ajustandoProduto.id);
+    if (error) {
+      toast.error("Erro ao ajustar o estoque");
+      return;
+    }
+    await supabase.from("ajustes_estoque").insert({
+      produto_id: ajustandoProduto.id,
+      estoque_anterior: ajustandoProduto.estoque_atual,
+      estoque_novo: novoValor,
+      motivo: motivoAjusteProduto.trim() || null,
+    });
     setAjustandoProduto(null);
+    setMotivoAjusteProduto("");
     carregar();
   }
 
@@ -223,7 +315,22 @@ export default function ComprasPage() {
         </TabsList>
       </Tabs>
 
-      {aba === "lista" ? (
+      {carregando ? (
+        <div className="space-y-2">
+          <Skeleton className="h-20" />
+          <Skeleton className="h-20" />
+          <Skeleton className="h-20" />
+        </div>
+      ) : erro ? (
+        <div className="flex flex-col items-center gap-3 py-10 text-center">
+          <WifiOff className="size-8 text-muted-foreground/60" />
+          <p className="font-medium text-muted-foreground">Sem conexão</p>
+          <Button variant="outline" size="sm" onClick={carregar}>
+            <RotateCw className="size-4" />
+            Tentar de novo
+          </Button>
+        </div>
+      ) : aba === "lista" ? (
         <div className="space-y-4">
           {listaAutomatica.length === 0 && manuais.length === 0 ? (
             <EmptyState
@@ -307,6 +414,7 @@ export default function ComprasPage() {
                       setNovoEstoque(
                         String(ing.estoque_atual).replace(".", ",")
                       );
+                      setMotivoAjuste("");
                     }}
                   >
                     Ajustar
@@ -342,6 +450,7 @@ export default function ComprasPage() {
                       setNovoEstoqueProduto(
                         String(p.estoque_atual).replace(".", ",")
                       );
+                      setMotivoAjusteProduto("");
                     }}
                   >
                     Ajustar
@@ -374,7 +483,7 @@ export default function ComprasPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label>Valor gasto (R$) — opcional</Label>
+              <Label>Valor pago (R$) — opcional</Label>
               <Input
                 inputMode="decimal"
                 value={valorCompra}
@@ -382,8 +491,23 @@ export default function ComprasPage() {
                 placeholder="Lança como saída no financeiro"
               />
             </div>
-            <Button type="submit" className="w-full">
-              Confirmar
+            <div className="space-y-2">
+              <Label>
+                Conteúdo da embalagem comprada ({comprando?.ingrediente.unidade_uso}) — opcional
+              </Label>
+              <Input
+                inputMode="decimal"
+                value={novaEmbalagemQtd}
+                onChange={(e) => setNovaEmbalagemQtd(e.target.value)}
+                placeholder="Ex: 1000 (se comprou um pacote de 1kg)"
+              />
+              <p className="text-xs text-muted-foreground">
+                Informe junto com o valor pago para atualizar o custo do
+                ingrediente nas receitas.
+              </p>
+            </div>
+            <Button type="submit" className="w-full" disabled={processandoCompra}>
+              {processandoCompra ? "Confirmando..." : "Confirmar"}
             </Button>
           </form>
         </DialogContent>
@@ -429,6 +553,14 @@ export default function ComprasPage() {
                 required
               />
             </div>
+            <div className="space-y-2">
+              <Label>Motivo do ajuste — opcional</Label>
+              <Input
+                value={motivoAjuste}
+                onChange={(e) => setMotivoAjuste(e.target.value)}
+                placeholder="Ex: perda, inventário, correção..."
+              />
+            </div>
             <Button type="submit" className="w-full">
               Salvar
             </Button>
@@ -452,6 +584,14 @@ export default function ComprasPage() {
                 value={novoEstoqueProduto}
                 onChange={(e) => setNovoEstoqueProduto(e.target.value)}
                 required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Motivo do ajuste — opcional</Label>
+              <Input
+                value={motivoAjusteProduto}
+                onChange={(e) => setMotivoAjusteProduto(e.target.value)}
+                placeholder="Ex: perda, inventário, correção..."
               />
             </div>
             <Button type="submit" className="w-full">

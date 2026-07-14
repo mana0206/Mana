@@ -278,7 +278,8 @@ export default function ProdutosPage() {
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="size-8"
+                      className="size-11"
+                      aria-label={`Editar ${p.nome}`}
                       onClick={() => abrirEdicao(p)}
                     >
                       <Pencil className="size-4" />
@@ -286,7 +287,8 @@ export default function ProdutosPage() {
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="size-8"
+                      className="size-11"
+                      aria-label={`Excluir ${p.nome}`}
                       onClick={() => setExcluindo(p)}
                     >
                       <Trash2 className="size-4 text-destructive" />

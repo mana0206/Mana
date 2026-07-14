@@ -1,10 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { useTheme } from "next-themes";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
+import { Switch } from "@/components/ui/switch";
 import {
   Sheet,
   SheetContent,
@@ -27,6 +29,7 @@ import {
   BarChart3,
   Settings,
   LogOut,
+  Moon,
 } from "lucide-react";
 
 const abas = [
@@ -34,14 +37,14 @@ const abas = [
   { href: "/pedidos", label: "Pedidos", icone: ClipboardList },
   { href: "/agenda", label: "Agenda", icone: CalendarDays },
   { href: "/produtos", label: "Produtos", icone: Croissant },
+  { href: "/financeiro", label: "Financeiro", icone: Wallet },
 ];
 
 const menuMais = [
   { href: "/ingredientes", label: "Ingredientes", icone: Wheat },
   { href: "/receitas", label: "Receitas", icone: BookOpen },
   { href: "/clientes", label: "Clientes", icone: Users },
-  { href: "/compras", label: "Compras & Estoque", icone: ShoppingCart },
-  { href: "/financeiro", label: "Financeiro", icone: Wallet },
+  { href: "/compras", label: "Compras & Estoque", icone: ShoppingCart, badge: true },
   { href: "/relatorios", label: "Relatórios", icone: BarChart3 },
   { href: "/config", label: "Custos fixos", icone: Settings },
 ];
@@ -49,9 +52,38 @@ const menuMais = [
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
+  const { resolvedTheme, setTheme } = useTheme();
+  const [montado, setMontado] = useState(false);
   const [menuAberto, setMenuAberto] = useState(false);
+  const [temPendencias, setTemPendencias] = useState(false);
+
+  useEffect(() => setMontado(true), []);
 
   const noMenuMais = menuMais.some((i) => pathname.startsWith(i.href));
+
+  useEffect(() => {
+    async function verificarPendencias() {
+      const supabase = createClient();
+      const { data: manuais } = await supabase
+        .from("compras")
+        .select("id")
+        .eq("comprado", false)
+        .limit(1);
+      if ((manuais?.length ?? 0) > 0) {
+        setTemPendencias(true);
+        return;
+      }
+      const { data: ingredientes } = await supabase
+        .from("ingredientes")
+        .select("estoque_atual, estoque_minimo")
+        .gt("estoque_minimo", 0);
+      const algumBaixo = (ingredientes ?? []).some(
+        (i) => i.estoque_atual < i.estoque_minimo
+      );
+      setTemPendencias(algumBaixo);
+    }
+    verificarPendencias();
+  }, [pathname]);
 
   async function sair() {
     const supabase = createClient();
@@ -66,7 +98,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {children}
       </main>
 
-      <nav className="fixed inset-x-0 bottom-0 z-40 border-t bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80">
+      <nav
+        className="fixed inset-x-0 bottom-0 z-40 border-t bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80"
+        aria-label="Navegação principal"
+      >
         <div
           className="mx-auto flex max-w-2xl items-stretch justify-around"
           style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
@@ -81,6 +116,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <Link
                 key={aba.href}
                 href={aba.href}
+                aria-current={ativa ? "page" : undefined}
                 className={cn(
                   "flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px] font-medium transition-colors",
                   ativa ? "text-primary" : "text-muted-foreground"
@@ -95,11 +131,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <Sheet open={menuAberto} onOpenChange={setMenuAberto}>
             <SheetTrigger
               className={cn(
-                "flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px] font-medium transition-colors",
+                "relative flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px] font-medium transition-colors",
                 noMenuMais ? "text-primary" : "text-muted-foreground"
               )}
             >
-              <Menu className="size-5" />
+              <span className="relative">
+                <Menu className="size-5" />
+                {temPendencias && (
+                  <span
+                    aria-label="Você tem itens pendentes na lista de compras"
+                    className="absolute -right-1 -top-1 size-2 rounded-full bg-destructive"
+                  />
+                )}
+              </span>
               Mais
             </SheetTrigger>
             <SheetContent side="bottom" className="rounded-t-2xl pb-8">
@@ -126,9 +170,22 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     >
                       <Icone className="size-5 text-muted-foreground" />
                       {item.label}
+                      {item.badge && temPendencias && (
+                        <span className="ml-auto size-2 rounded-full bg-destructive" />
+                      )}
                     </Link>
                   );
                 })}
+                {montado && (
+                  <div className="flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium">
+                    <Moon className="size-5 text-muted-foreground" />
+                    <span className="flex-1">Modo escuro</span>
+                    <Switch
+                      checked={resolvedTheme === "dark"}
+                      onCheckedChange={(v) => setTheme(v ? "dark" : "light")}
+                    />
+                  </div>
+                )}
                 <Separator className="my-1" />
                 <button
                   onClick={sair}

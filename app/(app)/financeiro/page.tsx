@@ -41,16 +41,19 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { addMonths, endOfMonth, format, startOfMonth, subMonths } from "date-fns";
 import {
   ChevronLeft,
   ChevronRight,
   Plus,
+  RotateCw,
   Trash2,
   TrendingDown,
   TrendingUp,
   Wallet,
+  WifiOff,
 } from "lucide-react";
 
 export default function FinanceiroPage() {
@@ -67,8 +70,12 @@ export default function FinanceiroPage() {
   const [valor, setValor] = useState("");
   const [descricao, setDescricao] = useState("");
   const [data, setData] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [carregando, setCarregando] = useState(true);
+  const [erro, setErro] = useState(false);
 
   const carregar = useCallback(async () => {
+    setCarregando(true);
+    setErro(false);
     const supabase = createClient();
     const inicio = format(startOfMonth(mes), "yyyy-MM-dd");
     const fim = format(endOfMonth(mes), "yyyy-MM-dd");
@@ -86,12 +93,18 @@ export default function FinanceiroPage() {
         .eq("pago", false)
         .in("status", ["confirmado", "em_producao", "pronto", "entregue"]),
     ]);
+    if (movRes.error || pedRes.error) {
+      setErro(true);
+      setCarregando(false);
+      return;
+    }
     setMovimentos((movRes.data as MovimentoFinanceiro[]) ?? []);
     setAReceber(
       ((pedRes.data as Pedido[]) ?? []).filter(
         (p) => saldoPedido(p, p.itens ?? []) > 0
       )
     );
+    setCarregando(false);
   }, [mes]);
 
   useEffect(() => {
@@ -133,11 +146,15 @@ export default function FinanceiroPage() {
   async function excluir() {
     if (!excluindoMov) return;
     const supabase = createClient();
-    await supabase
+    const { error } = await supabase
       .from("movimentos_financeiros")
       .delete()
       .eq("id", excluindoMov.id);
     setExcluindoMov(null);
+    if (error) {
+      toast.error("Erro ao excluir o lançamento");
+      return;
+    }
     toast.success("Lançamento excluído");
     carregar();
   }
@@ -158,6 +175,8 @@ export default function FinanceiroPage() {
         <Button
           variant="ghost"
           size="icon"
+          className="size-11"
+          aria-label="Mês anterior"
           onClick={() => setMes(subMonths(mes, 1))}
         >
           <ChevronLeft className="size-5" />
@@ -166,127 +185,154 @@ export default function FinanceiroPage() {
         <Button
           variant="ghost"
           size="icon"
+          className="size-11"
+          aria-label="Próximo mês"
           onClick={() => setMes(addMonths(mes, 1))}
         >
           <ChevronRight className="size-5" />
         </Button>
       </div>
 
-      <div className="grid grid-cols-3 gap-2">
-        <Card className="border-green-200 bg-green-50/50">
-          <CardContent className="p-3">
-            <div className="flex items-center gap-1 text-green-700">
-              <TrendingUp className="size-3.5" />
-              <span className="text-[11px] font-medium">Entradas</span>
-            </div>
-            <p className="mt-0.5 text-sm font-bold text-green-800">
-              {formatBRL(entradas)}
-            </p>
-          </CardContent>
-        </Card>
-        <Card className="border-red-200 bg-red-50/50">
-          <CardContent className="p-3">
-            <div className="flex items-center gap-1 text-red-700">
-              <TrendingDown className="size-3.5" />
-              <span className="text-[11px] font-medium">Saídas</span>
-            </div>
-            <p className="mt-0.5 text-sm font-bold text-red-800">
-              {formatBRL(saidas)}
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-3">
-            <div className="flex items-center gap-1 text-muted-foreground">
-              <Wallet className="size-3.5" />
-              <span className="text-[11px] font-medium">Lucro</span>
-            </div>
-            <p
-              className={
-                "mt-0.5 text-sm font-bold " +
-                (entradas - saidas >= 0 ? "text-green-800" : "text-red-800")
-              }
-            >
-              {formatBRL(entradas - saidas)}
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {aReceber.length > 0 && (
-        <section>
-          <h2 className="mb-2 text-sm font-semibold text-muted-foreground">
-            A receber — {formatBRL(totalReceber)}
-          </h2>
-          <div className="space-y-2">
-            {aReceber.map((p) => (
-              <Link key={p.id} href={`/pedidos/${p.id}`} className="block">
-                <Card className="border-amber-200 bg-amber-50/50 transition-colors hover:bg-amber-100/50">
-                  <CardContent className="flex items-center justify-between p-3 text-sm">
-                    <span className="font-medium">
-                      {p.cliente?.nome ?? "Sem cliente"}
-                    </span>
-                    <span className="font-semibold text-amber-800">
-                      {formatBRL(saldoPedido(p, p.itens ?? []))}
-                    </span>
-                  </CardContent>
-                </Card>
-              </Link>
-            ))}
+      {carregando ? (
+        <div className="space-y-3">
+          <div className="grid grid-cols-3 gap-2">
+            <Skeleton className="h-16" />
+            <Skeleton className="h-16" />
+            <Skeleton className="h-16" />
           </div>
-        </section>
+          <Skeleton className="h-40" />
+        </div>
+      ) : erro ? (
+        <div className="flex flex-col items-center gap-3 py-10 text-center">
+          <WifiOff className="size-8 text-muted-foreground/60" />
+          <p className="font-medium text-muted-foreground">Sem conexão</p>
+          <Button variant="outline" size="sm" onClick={carregar}>
+            <RotateCw className="size-4" />
+            Tentar de novo
+          </Button>
+        </div>
+      ) : (
+        <>
+          <div className="grid grid-cols-3 gap-2">
+            <Card className="border-[#8c9a5d]/40 bg-[#8c9a5d]/10">
+              <CardContent className="p-3">
+                <div className="flex items-center gap-1 text-[#5f6a3d]">
+                  <TrendingUp className="size-3.5" />
+                  <span className="text-[11px] font-medium">Entradas</span>
+                </div>
+                <p className="mt-0.5 text-sm font-bold text-[#3a4720]">
+                  {formatBRL(entradas)}
+                </p>
+              </CardContent>
+            </Card>
+            <Card className="border-destructive/30 bg-destructive/10">
+              <CardContent className="p-3">
+                <div className="flex items-center gap-1 text-destructive">
+                  <TrendingDown className="size-3.5" />
+                  <span className="text-[11px] font-medium">Saídas</span>
+                </div>
+                <p className="mt-0.5 text-sm font-bold text-destructive">
+                  {formatBRL(saidas)}
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-3">
+                <div className="flex items-center gap-1 text-muted-foreground">
+                  <Wallet className="size-3.5" />
+                  <span className="text-[11px] font-medium">Saldo</span>
+                </div>
+                <p
+                  className={
+                    "mt-0.5 text-sm font-bold " +
+                    (entradas - saidas >= 0
+                      ? "text-[#3a4720]"
+                      : "text-destructive")
+                  }
+                >
+                  {formatBRL(entradas - saidas)}
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+
+          {aReceber.length > 0 && (
+            <section>
+              <h2 className="mb-2 text-sm font-semibold text-muted-foreground">
+                A receber — {formatBRL(totalReceber)}
+              </h2>
+              <div className="space-y-2">
+                {aReceber.map((p) => (
+                  <Link key={p.id} href={`/pedidos/${p.id}`} className="block">
+                    <Card className="border-[#b3a268]/40 bg-[#b3a268]/10 transition-colors hover:bg-[#b3a268]/20">
+                      <CardContent className="flex items-center justify-between p-3 text-sm">
+                        <span className="font-medium">
+                          {p.cliente?.nome ?? "Sem cliente"}
+                        </span>
+                        <span className="font-semibold text-[#6b5e2e]">
+                          {formatBRL(saldoPedido(p, p.itens ?? []))}
+                        </span>
+                      </CardContent>
+                    </Card>
+                  </Link>
+                ))}
+              </div>
+            </section>
+          )}
+
+          <section>
+            <h2 className="mb-2 text-sm font-semibold text-muted-foreground">
+              Lançamentos do mês
+            </h2>
+            {movimentos.length === 0 ? (
+              <EmptyState
+                icone={Wallet}
+                titulo="Nenhum lançamento"
+                descricao="Entradas de pedidos pagos e gastos aparecem aqui."
+              />
+            ) : (
+              <div className="space-y-2">
+                {movimentos.map((m) => (
+                  <Card key={m.id}>
+                    <CardContent className="flex items-center justify-between gap-2 p-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium">
+                          {m.descricao || m.categoria}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {formatData(m.data)} · {m.categoria}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1">
+                        <span
+                          className={
+                            "text-sm font-semibold " +
+                            (m.tipo === "entrada"
+                              ? "text-[#3a4720]"
+                              : "text-destructive")
+                          }
+                        >
+                          {m.tipo === "entrada" ? "+" : "-"}
+                          {formatBRL(m.valor)}
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="size-11"
+                          aria-label={`Excluir lançamento ${m.descricao || m.categoria}`}
+                          onClick={() => setExcluindoMov(m)}
+                        >
+                          <Trash2 className="size-3.5 text-destructive" />
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </section>
+        </>
       )}
-
-      <section>
-        <h2 className="mb-2 text-sm font-semibold text-muted-foreground">
-          Lançamentos do mês
-        </h2>
-        {movimentos.length === 0 ? (
-          <EmptyState
-            icone={Wallet}
-            titulo="Nenhum lançamento"
-            descricao="Entradas de pedidos pagos e gastos aparecem aqui."
-          />
-        ) : (
-          <div className="space-y-2">
-            {movimentos.map((m) => (
-              <Card key={m.id}>
-                <CardContent className="flex items-center justify-between gap-2 p-3">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium">
-                      {m.descricao || m.categoria}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {formatData(m.data)} · {m.categoria}
-                    </p>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-1">
-                    <span
-                      className={
-                        "text-sm font-semibold " +
-                        (m.tipo === "entrada"
-                          ? "text-green-700"
-                          : "text-red-700")
-                      }
-                    >
-                      {m.tipo === "entrada" ? "+" : "-"}
-                      {formatBRL(m.valor)}
-                    </span>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="size-7"
-                      onClick={() => setExcluindoMov(m)}
-                    >
-                      <Trash2 className="size-3.5 text-destructive" />
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        )}
-      </section>
 
       <Dialog open={dialogAberto} onOpenChange={setDialogAberto}>
         <DialogContent>

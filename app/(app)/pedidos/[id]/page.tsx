@@ -12,6 +12,7 @@ import {
 } from "@/lib/format";
 import {
   PROXIMO_STATUS,
+  STATUS_ANTERIOR,
   STATUS_CORES,
   STATUS_LABELS,
   type Cliente,
@@ -48,6 +49,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -61,11 +68,14 @@ import {
   ArrowRight,
   Ban,
   CheckCircle2,
+  ChevronDown,
   MessageCircle,
   Pencil,
   Plus,
+  RotateCcw,
   Trash2,
   UserPlus,
+  WifiOff,
 } from "lucide-react";
 
 const FORMAS_PAGAMENTO = [
@@ -82,13 +92,17 @@ export default function PedidoDetalhePage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const [carregando, setCarregando] = useState(true);
+  const [erro, setErro] = useState(false);
   const [pedido, setPedido] = useState<Pedido | null>(null);
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [processando, setProcessando] = useState(false);
   const [confirmaCancelar, setConfirmaCancelar] = useState(false);
   const [confirmaExcluir, setConfirmaExcluir] = useState(false);
+  const [confirmaVoltarStatus, setConfirmaVoltarStatus] = useState(false);
   const [dialogItem, setDialogItem] = useState(false);
   const [dialogEditar, setDialogEditar] = useState(false);
+  const [dialogPagamento, setDialogPagamento] = useState(false);
+  const [formaPgtoRecebido, setFormaPgtoRecebido] = useState("");
 
   // formulário de item
   const [itemProdutoId, setItemProdutoId] = useState("");
@@ -112,6 +126,7 @@ export default function PedidoDetalhePage() {
   const [criandoCliente, setCriandoCliente] = useState(false);
 
   const carregar = useCallback(async () => {
+    setErro(false);
     const supabase = createClient();
     const [pedRes, prodRes, cliRes] = await Promise.all([
       supabase
@@ -122,6 +137,11 @@ export default function PedidoDetalhePage() {
       supabase.from("produtos").select("*").eq("ativo", true).order("nome"),
       supabase.from("clientes").select("*").order("nome"),
     ]);
+    if (pedRes.error || prodRes.error || cliRes.error) {
+      setErro(true);
+      setCarregando(false);
+      return;
+    }
     setPedido(pedRes.data as Pedido);
     setProdutos((prodRes.data as Produto[]) ?? []);
     setClientes((cliRes.data as Cliente[]) ?? []);
@@ -159,11 +179,28 @@ export default function PedidoDetalhePage() {
     carregar();
   }, [carregar]);
 
-  if (carregando || !pedido) {
+  if (carregando) {
     return (
       <div className="space-y-4">
         <Skeleton className="h-8 w-48" />
         <Skeleton className="h-64" />
+      </div>
+    );
+  }
+
+  if (erro || !pedido) {
+    return (
+      <div className="flex flex-col items-center gap-3 pt-20 text-center">
+        <WifiOff className="size-8 text-muted-foreground/60" />
+        <p className="font-medium text-muted-foreground">
+          {erro ? "Sem conexão" : "Pedido não encontrado"}
+        </p>
+        {erro && (
+          <Button variant="outline" size="sm" onClick={carregar}>
+            <RotateCcw className="size-4" />
+            Tentar de novo
+          </Button>
+        )}
       </div>
     );
   }
@@ -174,6 +211,7 @@ export default function PedidoDetalhePage() {
   const saldo = saldoPedido(pedido, itens);
   const finalizado = STATUS_FINALIZADOS.includes(pedido.status);
   const proximo = PROXIMO_STATUS[pedido.status];
+  const anterior = STATUS_ANTERIOR[pedido.status];
 
   async function registrarMovimentoUnico(
     categoria: string,
@@ -251,7 +289,13 @@ export default function PedidoDetalhePage() {
     carregar();
   }
 
-  async function marcarPago() {
+  function abrirDialogPagamento() {
+    setFormaPgtoRecebido(pedido?.forma_pagamento ?? "");
+    setDialogPagamento(true);
+  }
+
+  async function confirmarPagamento(e: React.FormEvent) {
+    e.preventDefault();
     if (!pedido) return;
     setProcessando(true);
     const supabase = createClient();
@@ -260,22 +304,62 @@ export default function PedidoDetalhePage() {
       saldo,
       `Pedido — ${pedido.cliente?.nome ?? "sem cliente"}`
     );
-    await supabase.from("pedidos").update({ pago: true }).eq("id", id);
+    const { error } = await supabase
+      .from("pedidos")
+      .update({
+        pago: true,
+        forma_pagamento: formaPgtoRecebido || pedido.forma_pagamento,
+      })
+      .eq("id", id);
     setProcessando(false);
+    if (error) {
+      toast.error("Erro ao registrar pagamento");
+      return;
+    }
+    setDialogPagamento(false);
     toast.success("Pagamento registrado no financeiro");
+    carregar();
+  }
+
+  async function voltarStatus() {
+    if (!anterior) return;
+    setProcessando(true);
+    const supabase = createClient();
+    const { error } = await supabase
+      .from("pedidos")
+      .update({ status: anterior })
+      .eq("id", id);
+    setProcessando(false);
+    setConfirmaVoltarStatus(false);
+    if (error) {
+      toast.error("Erro ao voltar o status");
+      return;
+    }
+    toast.info(`Pedido voltou para ${STATUS_LABELS[anterior].toLowerCase()}`);
     carregar();
   }
 
   async function cancelar() {
     const supabase = createClient();
-    await supabase.from("pedidos").update({ status: "cancelado" }).eq("id", id);
+    const { error } = await supabase
+      .from("pedidos")
+      .update({ status: "cancelado" })
+      .eq("id", id);
     setConfirmaCancelar(false);
+    if (error) {
+      toast.error("Erro ao cancelar o pedido");
+      return;
+    }
     carregar();
   }
 
   async function excluirPedido() {
     const supabase = createClient();
-    await supabase.from("pedidos").delete().eq("id", id);
+    const { error } = await supabase.from("pedidos").delete().eq("id", id);
+    if (error) {
+      toast.error("Erro ao excluir o pedido");
+      return;
+    }
     router.push("/pedidos");
   }
 
@@ -318,7 +402,14 @@ export default function PedidoDetalhePage() {
 
   async function removerItem(item: PedidoItem) {
     const supabase = createClient();
-    await supabase.from("pedido_itens").delete().eq("id", item.id);
+    const { error } = await supabase
+      .from("pedido_itens")
+      .delete()
+      .eq("id", item.id);
+    if (error) {
+      toast.error("Erro ao remover item");
+      return;
+    }
     carregar();
   }
 
@@ -412,7 +503,13 @@ export default function PedidoDetalhePage() {
   return (
     <div className="space-y-5">
       <div className="flex items-center gap-2">
-        <Button variant="ghost" size="icon" onClick={() => router.back()}>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-11"
+          aria-label="Voltar"
+          onClick={() => router.back()}
+        >
           <ArrowLeft className="size-5" />
         </Button>
         <div className="min-w-0 flex-1">
@@ -431,15 +528,45 @@ export default function PedidoDetalhePage() {
       {!finalizado && (
         <div className="grid grid-cols-1 gap-2">
           {proximo && (
-            <Button size="lg" onClick={avancarStatus} disabled={processando}>
-              <ArrowRight className="size-5" />
-              Marcar como {STATUS_LABELS[proximo].toLowerCase()}
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                size="lg"
+                className="flex-1"
+                onClick={avancarStatus}
+                disabled={processando}
+              >
+                <ArrowRight className="size-5" />
+                Marcar como {STATUS_LABELS[proximo].toLowerCase()}
+              </Button>
+              {anterior && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      size="lg"
+                      variant="outline"
+                      className="size-11 shrink-0 px-0"
+                      aria-label="Mais opções de status"
+                      disabled={processando}
+                    >
+                      <ChevronDown className="size-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem
+                      onClick={() => setConfirmaVoltarStatus(true)}
+                    >
+                      <RotateCcw className="size-4" />
+                      Voltar para {STATUS_LABELS[anterior].toLowerCase()}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+            </div>
           )}
           <Button
             size="lg"
             variant="outline"
-            className="border-green-300 text-green-700 hover:bg-green-50"
+            className="border-[#8c9a5d]/50 text-[#586b32] hover:bg-[#8c9a5d]/10"
             onClick={enviarWhatsApp}
           >
             <MessageCircle className="size-5" />
@@ -453,8 +580,8 @@ export default function PedidoDetalhePage() {
       {pedido.status === "entregue" && !pedido.pago && (
         <Button
           size="lg"
-          className="w-full bg-green-600 hover:bg-green-700"
-          onClick={marcarPago}
+          className="w-full bg-[#586b32] hover:bg-[#3a4720]"
+          onClick={abrirDialogPagamento}
           disabled={processando}
         >
           <CheckCircle2 className="size-5" />
@@ -491,7 +618,8 @@ export default function PedidoDetalhePage() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="size-8 shrink-0"
+                  className="size-11 shrink-0"
+                  aria-label={`Remover ${item.descricao}`}
                   onClick={() => removerItem(item)}
                 >
                   <Trash2 className="size-3.5 text-destructive" />
@@ -682,7 +810,8 @@ export default function PedidoDetalhePage() {
                   type="button"
                   variant="outline"
                   size="icon"
-                  className="shrink-0"
+                  className="size-11 shrink-0"
+                  aria-label="Cadastrar novo cliente"
                   onClick={() => setDialogCliente(true)}
                 >
                   <UserPlus className="size-4" />
@@ -778,6 +907,72 @@ export default function PedidoDetalhePage() {
           </form>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={dialogPagamento} onOpenChange={setDialogPagamento}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Registrar pagamento de {formatBRL(saldo)}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={confirmarPagamento} className="space-y-4">
+            <div className="space-y-2">
+              <Label>Forma de pagamento</Label>
+              <Select
+                value={formaPgtoRecebido || "__nenhuma__"}
+                onValueChange={(v) =>
+                  setFormaPgtoRecebido(v === "__nenhuma__" ? "" : v)
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Não informar" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__nenhuma__">Não informar</SelectItem>
+                  {FORMAS_PAGAMENTO.map((f) => (
+                    <SelectItem key={f} value={f}>
+                      {f}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button
+              type="submit"
+              className="w-full bg-[#586b32] hover:bg-[#3a4720]"
+              disabled={processando}
+            >
+              {processando ? "Registrando..." : "Confirmar recebimento"}
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog
+        open={confirmaVoltarStatus}
+        onOpenChange={setConfirmaVoltarStatus}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Voltar para {anterior ? STATUS_LABELS[anterior].toLowerCase() : ""}?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {pedido.status === "confirmado" &&
+                "O sinal já lançado no financeiro não é removido automaticamente."}
+              {pedido.status === "entregue" &&
+                "O estoque de produtos já baixado não é devolvido automaticamente."}
+              {pedido.status !== "confirmado" &&
+                pedido.status !== "entregue" &&
+                "O status do pedido será revertido."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={voltarStatus}>
+              Voltar status
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={confirmaCancelar} onOpenChange={setConfirmaCancelar}>
         <AlertDialogContent>

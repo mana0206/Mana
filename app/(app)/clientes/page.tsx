@@ -177,7 +177,13 @@ export default function ClientesPage() {
                 </div>
                 <div className="flex shrink-0 gap-1">
                   {c.telefone && (
-                    <Button variant="ghost" size="icon" asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-11"
+                      aria-label={`Chamar ${c.nome} no WhatsApp`}
+                      asChild
+                    >
                       <a
                         href={`https://wa.me/${telefoneParaWhatsApp(c.telefone)}`}
                         target="_blank"
@@ -190,6 +196,8 @@ export default function ClientesPage() {
                   <Button
                     variant="ghost"
                     size="icon"
+                    className="size-11"
+                    aria-label={`Editar ${c.nome}`}
                     onClick={() => abrirEdicao(c)}
                   >
                     <Pencil className="size-4" />
@@ -197,6 +205,8 @@ export default function ClientesPage() {
                   <Button
                     variant="ghost"
                     size="icon"
+                    className="size-11"
+                    aria-label={`Excluir ${c.nome}`}
                     onClick={() => setExcluindo(c)}
                   >
                     <Trash2 className="size-4 text-destructive" />
