@@ -285,6 +285,12 @@ export default function PedidoDetalhePage() {
     }
     if (proximo === "entregue") {
       await baixarEstoqueProdutos();
+      // se ainda há valor a receber, já abre o registro de pagamento para
+      // a entrada não ficar esquecida fora do financeiro
+      if (!pedido.pago && saldo > 0) {
+        toast.info("Falta registrar o pagamento deste pedido");
+        abrirDialogPagamento();
+      }
     }
     setProcessando(false);
     carregar();
