@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import { totalPedido } from "@/lib/calc";
+import { saldoPedido, totalPedido } from "@/lib/calc";
 import { formatBRL, formatDataEntrega } from "@/lib/format";
 import {
   STATUS_CORES,
@@ -146,8 +146,32 @@ export default function PedidosPage() {
                   </div>
                   <div className="mt-1 flex items-center justify-between text-sm text-muted-foreground">
                     <span>{formatDataEntrega(p.data_entrega)}</span>
-                    <span className="font-semibold text-foreground">
-                      {formatBRL(totalPedido(p, p.itens ?? []))}
+                    <span className="flex items-center gap-1.5">
+                      {p.status !== "orcamento" &&
+                        p.status !== "cancelado" &&
+                        (p.pago ? (
+                          <Badge
+                            variant="outline"
+                            className="border-[#8c9a5d]/50 bg-[#8c9a5d]/15 text-[#3a4720]"
+                          >
+                            Pago
+                          </Badge>
+                        ) : (
+                          <Badge
+                            variant="outline"
+                            className="border-[#b3a268]/60 bg-[#b3a268]/15 text-[#6b5e2e]"
+                          >
+                            {p.sinal > 0 &&
+                            saldoPedido(p, p.itens ?? []) <
+                              totalPedido(p, p.itens ?? [])
+                              ? "Falta " +
+                                formatBRL(saldoPedido(p, p.itens ?? []))
+                              : "A receber"}
+                          </Badge>
+                        ))}
+                      <span className="font-semibold text-foreground">
+                        {formatBRL(totalPedido(p, p.itens ?? []))}
+                      </span>
                     </span>
                   </div>
                   {(p.itens?.length ?? 0) > 0 && (
