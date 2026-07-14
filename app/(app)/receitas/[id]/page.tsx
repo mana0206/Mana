@@ -135,6 +135,16 @@ export default function ReceitaDetalhePage() {
       toast.error("Dê um nome ao ingrediente");
       return;
     }
+    if (parseDecimalSimples(novoPreco) <= 0) {
+      toast.error("Informe o preço pago pelo ingrediente");
+      return;
+    }
+    if (parseDecimalSimples(novoConteudo) <= 0) {
+      toast.error(
+        `Informe o conteúdo da embalagem em ${novaUnidade} — ex.: caixa de leite de 1 L = 1000 ml`
+      );
+      return;
+    }
     setSalvandoNovo(true);
     const supabase = createClient();
     const { data, error } = await supabase
