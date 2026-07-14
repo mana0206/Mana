@@ -15,6 +15,7 @@ import type {
   Produto,
   Receita,
   ReceitaIngrediente,
+  UnidadeUso,
 } from "@/lib/types";
 import { FotoUpload } from "@/components/foto-upload";
 import { Button } from "@/components/ui/button";
@@ -62,6 +63,12 @@ export default function ReceitaDetalhePage() {
   const [confirmaExcluir, setConfirmaExcluir] = useState(false);
   const [ingSelecionado, setIngSelecionado] = useState("");
   const [qtdItem, setQtdItem] = useState("");
+  const [criandoNovo, setCriandoNovo] = useState(false);
+  const [novoNome, setNovoNome] = useState("");
+  const [novoPreco, setNovoPreco] = useState("");
+  const [novoConteudo, setNovoConteudo] = useState("");
+  const [novaUnidade, setNovaUnidade] = useState<UnidadeUso>("g");
+  const [salvandoNovo, setSalvandoNovo] = useState(false);
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [dialogProducao, setDialogProducao] = useState(false);
   const [multiplicador, setMultiplicador] = useState("1");
@@ -116,10 +123,47 @@ export default function ReceitaDetalhePage() {
       toast.error("Erro ao adicionar ingrediente");
       return;
     }
-    setDialogItem(false);
+    const nome = ingredientes.find((i) => i.id === ingSelecionado)?.nome;
+    toast.success(`${nome ?? "Ingrediente"} adicionado — pode incluir o próximo`);
     setIngSelecionado("");
     setQtdItem("");
     carregar();
+  }
+
+  async function criarNovoIngrediente() {
+    if (!novoNome.trim()) {
+      toast.error("Dê um nome ao ingrediente");
+      return;
+    }
+    setSalvandoNovo(true);
+    const supabase = createClient();
+    const { data, error } = await supabase
+      .from("ingredientes")
+      .insert({
+        nome: novoNome.trim(),
+        preco_compra: parseDecimalSimples(novoPreco),
+        quantidade_embalagem: parseDecimalSimples(novoConteudo) || 1,
+        unidade_uso: novaUnidade,
+        estoque_atual: 0,
+        estoque_minimo: 0,
+      })
+      .select()
+      .single();
+    setSalvandoNovo(false);
+    if (error || !data) {
+      toast.error("Erro ao criar ingrediente");
+      return;
+    }
+    const novo = data as Ingrediente;
+    setIngredientes((prev) =>
+      [...prev, novo].sort((a, b) => a.nome.localeCompare(b.nome))
+    );
+    setIngSelecionado(novo.id);
+    setCriandoNovo(false);
+    setNovoNome("");
+    setNovoPreco("");
+    setNovoConteudo("");
+    toast.success(`${novo.nome} cadastrado — agora informe a quantidade usada`);
   }
 
   async function removerItem(itemId: string) {
@@ -388,15 +432,109 @@ export default function ReceitaDetalhePage() {
         </CardContent>
       </Card>
 
-      <Dialog open={dialogItem} onOpenChange={setDialogItem}>
-        <DialogContent>
+      <Dialog
+        open={dialogItem}
+        onOpenChange={(aberto) => {
+          setDialogItem(aberto);
+          if (!aberto) {
+            setCriandoNovo(false);
+            setIngSelecionado("");
+            setQtdItem("");
+          }
+        }}
+      >
+        <DialogContent className="max-h-[90dvh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Adicionar ingrediente</DialogTitle>
+            <DialogTitle>Adicionar ingredientes</DialogTitle>
           </DialogHeader>
-          {ingredientes.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              Cadastre ingredientes primeiro na tela de Ingredientes.
-            </p>
+
+          {itens.length > 0 && (
+            <div className="rounded-lg bg-secondary px-3 py-2 text-xs text-muted-foreground">
+              Já na receita:{" "}
+              {itens.map((item) => item.ingrediente?.nome).join(", ")}
+            </div>
+          )}
+
+          {criandoNovo || ingredientes.length === 0 ? (
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Cadastre o ingrediente rapidinho — ele já fica salvo para as
+                próximas receitas.
+              </p>
+              <div className="space-y-2">
+                <Label htmlFor="novo-nome">Nome</Label>
+                <Input
+                  id="novo-nome"
+                  value={novoNome}
+                  onChange={(e) => setNovoNome(e.target.value)}
+                  placeholder="Ex: Leite integral"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Unidade de uso nas receitas</Label>
+                <Select
+                  value={novaUnidade}
+                  onValueChange={(v) => setNovaUnidade(v as UnidadeUso)}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="g">gramas (g)</SelectItem>
+                    <SelectItem value="ml">mililitros (ml)</SelectItem>
+                    <SelectItem value="un">unidades (un)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label htmlFor="novo-preco">Preço pago (R$)</Label>
+                  <Input
+                    id="novo-preco"
+                    inputMode="decimal"
+                    value={novoPreco}
+                    onChange={(e) => setNovoPreco(e.target.value)}
+                    placeholder="6,00"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="novo-conteudo">
+                    Conteúdo ({novaUnidade})
+                  </Label>
+                  <Input
+                    id="novo-conteudo"
+                    inputMode="decimal"
+                    value={novoConteudo}
+                    onChange={(e) => setNovoConteudo(e.target.value)}
+                    placeholder="1000"
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Ex: caixa de leite de 1 L por R$ 6,00 → preço 6,00 e conteúdo
+                1000 ml.
+              </p>
+              <div className="flex gap-2">
+                {ingredientes.length > 0 && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => setCriandoNovo(false)}
+                  >
+                    Voltar
+                  </Button>
+                )}
+                <Button
+                  type="button"
+                  className="flex-1"
+                  disabled={salvandoNovo}
+                  onClick={criarNovoIngrediente}
+                >
+                  {salvandoNovo ? "Salvando..." : "Cadastrar"}
+                </Button>
+              </div>
+            </div>
           ) : (
             <form onSubmit={adicionarItem} className="space-y-4">
               <div className="space-y-2">
@@ -414,6 +552,13 @@ export default function ReceitaDetalhePage() {
                     ))}
                   </SelectContent>
                 </Select>
+                <button
+                  type="button"
+                  className="text-sm text-primary underline underline-offset-2"
+                  onClick={() => setCriandoNovo(true)}
+                >
+                  Não achou? Cadastrar ingrediente novo
+                </button>
               </div>
               <div className="space-y-2">
                 <Label>
@@ -435,7 +580,15 @@ export default function ReceitaDetalhePage() {
                 className="w-full"
                 disabled={!ingSelecionado}
               >
-                Adicionar
+                Adicionar à receita
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                onClick={() => setDialogItem(false)}
+              >
+                Concluir
               </Button>
             </form>
           )}
