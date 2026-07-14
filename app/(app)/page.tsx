@@ -248,19 +248,37 @@ export default function DashboardPage() {
       </div>
 
       <Card>
-        <CardContent className="flex items-center justify-between p-4">
-          <span className="text-sm font-medium text-muted-foreground">
-            Saldo do mês
-          </span>
-          <span
-            className={
-              entradas - saidas >= 0
-                ? "text-lg font-bold text-[#3a4720]"
-                : "text-lg font-bold text-destructive"
-            }
-          >
-            {formatBRL(entradas - saidas)}
-          </span>
+        <CardContent className="space-y-1 p-4">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-muted-foreground">
+              Saldo do mês
+            </span>
+            <span
+              className={
+                entradas - saidas >= 0
+                  ? "text-lg font-bold text-[#3a4720]"
+                  : "text-lg font-bold text-destructive"
+              }
+            >
+              {formatBRL(entradas - saidas)}
+            </span>
+          </div>
+          {aReceber > 0 && (
+            <div className="flex items-center justify-between border-t border-border/60 pt-1.5">
+              <span className="text-sm text-muted-foreground">
+                Projetado (com a receber)
+              </span>
+              <span
+                className={
+                  entradas - saidas + aReceber >= 0
+                    ? "text-sm font-semibold text-[#3a4720]"
+                    : "text-sm font-semibold text-destructive"
+                }
+              >
+                {formatBRL(entradas - saidas + aReceber)}
+              </span>
+            </div>
+          )}
         </CardContent>
       </Card>
 
