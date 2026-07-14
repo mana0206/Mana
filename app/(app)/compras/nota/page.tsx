@@ -18,6 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import {
   ArrowLeft,
@@ -76,7 +77,11 @@ export default function ImportarNotaPage() {
   const [ingredientes, setIngredientes] = useState<Ingrediente[]>([]);
   const [destinos, setDestinos] = useState<Destino[]>([]);
   const [salvando, setSalvando] = useState(false);
-  const [resumo, setResumo] = useState({ criados: 0, atualizados: 0 });
+  const [resumo, setResumo] = useState({
+    criados: 0,
+    atualizados: 0,
+    valorImportado: 0,
+  });
   const scannerRef = useRef<{ stop: () => Promise<void> } | null>(null);
 
   useEffect(() => {
@@ -195,25 +200,34 @@ export default function ImportarNotaPage() {
       }
     }
 
-    // despesa no financeiro com o total da nota
-    await supabase.from("movimentos_financeiros").insert({
-      tipo: "saida",
-      categoria: "ingredientes",
-      valor: nota.valorTotal,
-      data: nota.dataEmissao ?? undefined,
-      descricao: `NFC-e — ${nota.emitente}`,
-    });
+    // despesa no financeiro = soma apenas dos itens efetivamente importados
+    // (itens não importados, ex: compras pessoais misturadas na nota, não
+    // devem inflar o gasto do negócio)
+    const valorImportado = nota.itens.reduce(
+      (soma, item, i) =>
+        destinos[i]?.tipo !== "ignorar" ? soma + item.valorTotal : soma,
+      0
+    );
+    if (valorImportado > 0) {
+      await supabase.from("movimentos_financeiros").insert({
+        tipo: "saida",
+        categoria: "ingredientes",
+        valor: valorImportado,
+        data: nota.dataEmissao ?? undefined,
+        descricao: `NFC-e — ${nota.emitente}`,
+      });
+    }
 
     // marca a nota como importada (bloqueia duplicidade)
     await supabase.from("notas_importadas").insert({
       chave: nota.chave,
       emitente: nota.emitente,
-      valor_total: nota.valorTotal,
+      valor_total: valorImportado,
       data_emissao: nota.dataEmissao,
       itens_importados: criados + atualizados,
     });
 
-    setResumo({ criados, atualizados });
+    setResumo({ criados, atualizados, valorImportado });
     setSalvando(false);
     setEtapa("concluido");
   }
@@ -301,6 +315,11 @@ export default function ImportarNotaPage() {
   // ---------- etapa 2: revisão ----------
   if (etapa === "revisao" && nota) {
     const importaveis = destinos.filter((d) => d.tipo !== "ignorar").length;
+    const valorImportado = nota.itens.reduce(
+      (soma, item, i) =>
+        destinos[i]?.tipo !== "ignorar" ? soma + item.valorTotal : soma,
+      0
+    );
     return (
       <div className="space-y-5">
         <div className="flex items-center gap-2">
@@ -331,53 +350,91 @@ export default function ImportarNotaPage() {
           {nota.itens.map((item, i) => {
             const { unidade_uso, fator } = converterUnidade(item.unidade);
             const destino = destinos[i];
+            const ignorado = destino.tipo === "ignorar";
             return (
-              <Card key={i} className={destino.tipo === "ignorar" ? "opacity-50" : undefined}>
+              <Card key={i} className={ignorado ? "opacity-50" : undefined}>
                 <CardContent className="space-y-2 p-4">
-                  <div className="flex items-start justify-between gap-2">
-                    <p className="text-sm font-medium">{item.descricao}</p>
-                    <p className="shrink-0 text-sm font-semibold">
-                      {formatBRL(item.valorTotal)}
-                    </p>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {formatQtd(item.quantidade)} {item.unidade} ={" "}
-                    {formatQtd(item.quantidade * fator)} {unidade_uso} ·{" "}
-                    {formatBRL(item.valorUnitario)}/{item.unidade}
-                  </p>
-                  <Select
-                    value={
-                      destino.tipo === "existente"
-                        ? destino.ingredienteId
-                        : destino.tipo
-                    }
-                    onValueChange={(v) =>
-                      setDestinos(
-                        destinos.map((d, j) =>
-                          j === i
-                            ? v === "novo" || v === "ignorar"
-                              ? { tipo: v }
-                              : { tipo: "existente", ingredienteId: v }
-                            : d
+                  <div className="flex items-start gap-3">
+                    <Checkbox
+                      checked={!ignorado}
+                      aria-label={
+                        ignorado
+                          ? `Importar ${item.descricao}`
+                          : `Não importar ${item.descricao}`
+                      }
+                      className="mt-0.5 size-5 shrink-0"
+                      onCheckedChange={(marcado) =>
+                        setDestinos(
+                          destinos.map((d, j) => {
+                            if (j !== i) return d;
+                            if (marcado) {
+                              // reativa: melhor ingrediente já sugerido, senão "novo"
+                              let melhor: Ingrediente | null = null;
+                              let melhorNota = 0;
+                              for (const ing of ingredientes) {
+                                const p = pontuar(item.descricao, ing.nome);
+                                if (p > melhorNota) {
+                                  melhorNota = p;
+                                  melhor = ing;
+                                }
+                              }
+                              return melhor && melhorNota >= 0.6
+                                ? { tipo: "existente", ingredienteId: melhor.id }
+                                : { tipo: "novo" };
+                            }
+                            return { tipo: "ignorar" };
+                          })
                         )
-                      )
-                    }
-                  >
-                    <SelectTrigger className="h-9">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="novo">
-                        ➕ Criar: {nomeBonito(item.descricao)}
-                      </SelectItem>
-                      {ingredientes.map((ing) => (
-                        <SelectItem key={ing.id} value={ing.id}>
-                          🔗 {ing.nome}
-                        </SelectItem>
-                      ))}
-                      <SelectItem value="ignorar">✕ Não importar</SelectItem>
-                    </SelectContent>
-                  </Select>
+                      }
+                    />
+                    <div className="min-w-0 flex-1 space-y-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-sm font-medium">{item.descricao}</p>
+                        <p className="shrink-0 text-sm font-semibold">
+                          {formatBRL(item.valorTotal)}
+                        </p>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {formatQtd(item.quantidade)} {item.unidade} ={" "}
+                        {formatQtd(item.quantidade * fator)} {unidade_uso} ·{" "}
+                        {formatBRL(item.valorUnitario)}/{item.unidade}
+                      </p>
+                      {!ignorado && (
+                        <Select
+                          value={
+                            destino.tipo === "existente"
+                              ? destino.ingredienteId
+                              : destino.tipo
+                          }
+                          onValueChange={(v) =>
+                            setDestinos(
+                              destinos.map((d, j) =>
+                                j === i
+                                  ? v === "novo"
+                                    ? { tipo: "novo" }
+                                    : { tipo: "existente", ingredienteId: v }
+                                  : d
+                              )
+                            )
+                          }
+                        >
+                          <SelectTrigger className="h-9">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="novo">
+                              ➕ Criar: {nomeBonito(item.descricao)}
+                            </SelectItem>
+                            {ingredientes.map((ing) => (
+                              <SelectItem key={ing.id} value={ing.id}>
+                                🔗 {ing.nome}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
             );
@@ -388,16 +445,24 @@ export default function ImportarNotaPage() {
           <CardContent className="space-y-1 p-4 text-sm">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Itens a importar</span>
-              <span className="font-medium">{importaveis}</span>
+              <span className="font-medium">
+                {importaveis} de {nota.itens.length}
+              </span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">
                 Despesa no financeiro
               </span>
               <span className="font-semibold text-primary">
-                {formatBRL(nota.valorTotal)}
+                {formatBRL(valorImportado)}
               </span>
             </div>
+            {valorImportado < nota.valorTotal && (
+              <p className="pt-1 text-xs text-muted-foreground">
+                {formatBRL(nota.valorTotal - valorImportado)} em itens não
+                importados (ex: itens pessoais) não entram no financeiro.
+              </p>
+            )}
           </CardContent>
         </Card>
 
@@ -428,7 +493,7 @@ export default function ImportarNotaPage() {
       <p className="max-w-xs text-sm text-muted-foreground">
         {resumo.criados} {resumo.criados === 1 ? "ingrediente criado" : "ingredientes criados"},{" "}
         {resumo.atualizados} {resumo.atualizados === 1 ? "atualizado" : "atualizados"}. A despesa de{" "}
-        <strong>{formatBRL(nota?.valorTotal ?? 0)}</strong> foi lançada no financeiro.
+        <strong>{formatBRL(resumo.valorImportado)}</strong> foi lançada no financeiro.
       </p>
       <div className="flex w-full max-w-xs flex-col gap-2 pt-2">
         <Button onClick={() => router.push("/compras")}>Ver estoque</Button>
