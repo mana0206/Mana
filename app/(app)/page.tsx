@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { formatBRL, formatData, formatDataEntrega, telefoneParaWhatsApp } from "@/lib/format";
-import { totalPedido } from "@/lib/calc";
+import { saldoPedido, totalPedido } from "@/lib/calc";
 import {
   STATUS_CORES,
   STATUS_LABELS,
@@ -25,6 +25,7 @@ import {
   Plus,
   ShoppingCart,
   CookingPot,
+  HandCoins,
   WifiOff,
   RotateCw,
   Clock,
@@ -48,6 +49,7 @@ export default function DashboardPage() {
   const [orcamentosEsquecidos, setOrcamentosEsquecidos] = useState<Pedido[]>(
     []
   );
+  const [pedidosAReceber, setPedidosAReceber] = useState<Pedido[]>([]);
 
   const carregar = useCallback(async () => {
     setCarregando(true);
@@ -59,7 +61,7 @@ export default function DashboardPage() {
 
     const limiteEsquecido = format(subDays(hoje, 3), "yyyy-MM-dd");
 
-    const [entregasRes, movRes, ingRes, orcRes] = await Promise.all([
+    const [entregasRes, movRes, ingRes, orcRes, aReceberRes] = await Promise.all([
       supabase
         .from("pedidos")
         .select("*, cliente:clientes(*)")
@@ -78,8 +80,19 @@ export default function DashboardPage() {
         .eq("status", "orcamento")
         .lte("created_at", `${limiteEsquecido}T23:59:59`)
         .order("created_at", { ascending: true }),
+      supabase
+        .from("pedidos")
+        .select("*, itens:pedido_itens(*)")
+        .in("status", ["confirmado", "em_producao", "pronto", "entregue"])
+        .eq("pago", false),
     ]);
-    if (entregasRes.error || movRes.error || ingRes.error || orcRes.error) {
+    if (
+      entregasRes.error ||
+      movRes.error ||
+      ingRes.error ||
+      orcRes.error ||
+      aReceberRes.error
+    ) {
       setErro(true);
       setCarregando(false);
       return;
@@ -92,6 +105,7 @@ export default function DashboardPage() {
       )
     );
     setOrcamentosEsquecidos((orcRes.data as Pedido[]) ?? []);
+    setPedidosAReceber((aReceberRes.data as Pedido[]) ?? []);
     setCarregando(false);
   }, []);
 
@@ -105,6 +119,14 @@ export default function DashboardPage() {
   const saidas = movimentos
     .filter((m) => m.tipo === "saida")
     .reduce((s, m) => s + m.valor, 0);
+
+  const comSaldoAberto = pedidosAReceber.filter(
+    (p) => saldoPedido(p, p.itens ?? []) > 0
+  );
+  const aReceber = comSaldoAberto.reduce(
+    (s, p) => s + saldoPedido(p, p.itens ?? []),
+    0
+  );
 
   const entregasHoje = entregas.filter(
     (p) => p.data_entrega && isToday(new Date(p.data_entrega))
@@ -241,6 +263,25 @@ export default function DashboardPage() {
           </span>
         </CardContent>
       </Card>
+
+      {aReceber > 0 && (
+        <Link href="/pedidos" className="block">
+          <Card className="border-[#b3a268]/50 bg-[#b3a268]/10 transition-colors hover:bg-[#b3a268]/20">
+            <CardContent className="flex items-center justify-between gap-3 p-4">
+              <div className="flex items-center gap-2 text-[#6b5e2e]">
+                <HandCoins className="size-4 shrink-0" />
+                <span className="text-sm font-medium">
+                  A receber ({comSaldoAberto.length}{" "}
+                  {comSaldoAberto.length === 1 ? "pedido" : "pedidos"})
+                </span>
+              </div>
+              <span className="text-lg font-bold text-[#8a7a3f]">
+                {formatBRL(aReceber)}
+              </span>
+            </CardContent>
+          </Card>
+        </Link>
+      )}
 
       {estoqueBaixo.length > 0 && (
         <Link href="/compras" className="block">
