@@ -73,6 +73,7 @@ import {
   Pencil,
   Plus,
   RotateCcw,
+  Tag,
   Trash2,
   UserPlus,
   WifiOff,
@@ -678,6 +679,17 @@ export default function PedidoDetalhePage() {
             {pedido.observacoes}
           </CardContent>
         </Card>
+      )}
+
+      {itens.length > 0 && (
+        <Button
+          variant="outline"
+          className="w-full"
+          onClick={() => router.push(`/pedidos/${id}/etiquetas`)}
+        >
+          <Tag className="size-4" />
+          Imprimir etiquetas
+        </Button>
       )}
 
       <div className="flex gap-2">

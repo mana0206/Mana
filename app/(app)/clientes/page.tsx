@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { telefoneParaWhatsApp } from "@/lib/format";
 import type { Cliente } from "@/lib/types";
@@ -160,9 +161,12 @@ export default function ClientesPage() {
       ) : (
         <div className="space-y-2">
           {filtrados.map((c) => (
-            <Card key={c.id}>
+            <Card key={c.id} className="transition-colors hover:bg-accent/50">
               <CardContent className="flex items-center justify-between gap-2 p-4">
-                <div className="min-w-0">
+                <Link
+                  href={`/clientes/${c.id}`}
+                  className="min-w-0 flex-1 outline-none"
+                >
                   <p className="font-medium">{c.nome}</p>
                   {c.telefone && (
                     <p className="text-sm text-muted-foreground">
@@ -174,7 +178,7 @@ export default function ClientesPage() {
                       {c.endereco}
                     </p>
                   )}
-                </div>
+                </Link>
                 <div className="flex shrink-0 gap-1">
                   {c.telefone && (
                     <Button

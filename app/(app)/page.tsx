@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import { formatBRL, formatDataEntrega } from "@/lib/format";
+import { formatBRL, formatData, formatDataEntrega, telefoneParaWhatsApp } from "@/lib/format";
+import { totalPedido } from "@/lib/calc";
 import {
   STATUS_CORES,
   STATUS_LABELS,
@@ -26,9 +27,17 @@ import {
   CookingPot,
   WifiOff,
   RotateCw,
+  Clock,
+  MessageCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { startOfMonth, endOfMonth, format, isToday } from "date-fns";
+import {
+  startOfMonth,
+  endOfMonth,
+  format,
+  isToday,
+  subDays,
+} from "date-fns";
 
 export default function DashboardPage() {
   const [carregando, setCarregando] = useState(true);
@@ -36,6 +45,9 @@ export default function DashboardPage() {
   const [entregas, setEntregas] = useState<Pedido[]>([]);
   const [movimentos, setMovimentos] = useState<MovimentoFinanceiro[]>([]);
   const [estoqueBaixo, setEstoqueBaixo] = useState<Ingrediente[]>([]);
+  const [orcamentosEsquecidos, setOrcamentosEsquecidos] = useState<Pedido[]>(
+    []
+  );
 
   const carregar = useCallback(async () => {
     setCarregando(true);
@@ -45,7 +57,9 @@ export default function DashboardPage() {
     const inicioMes = format(startOfMonth(hoje), "yyyy-MM-dd");
     const fimMes = format(endOfMonth(hoje), "yyyy-MM-dd");
 
-    const [entregasRes, movRes, ingRes] = await Promise.all([
+    const limiteEsquecido = format(subDays(hoje, 3), "yyyy-MM-dd");
+
+    const [entregasRes, movRes, ingRes, orcRes] = await Promise.all([
       supabase
         .from("pedidos")
         .select("*, cliente:clientes(*)")
@@ -58,8 +72,14 @@ export default function DashboardPage() {
         .gte("data", inicioMes)
         .lte("data", fimMes),
       supabase.from("ingredientes").select("*"),
+      supabase
+        .from("pedidos")
+        .select("*, cliente:clientes(*), itens:pedido_itens(*)")
+        .eq("status", "orcamento")
+        .lte("created_at", `${limiteEsquecido}T23:59:59`)
+        .order("created_at", { ascending: true }),
     ]);
-    if (entregasRes.error || movRes.error || ingRes.error) {
+    if (entregasRes.error || movRes.error || ingRes.error || orcRes.error) {
       setErro(true);
       setCarregando(false);
       return;
@@ -71,6 +91,7 @@ export default function DashboardPage() {
         (i) => i.estoque_minimo > 0 && i.estoque_atual < i.estoque_minimo
       )
     );
+    setOrcamentosEsquecidos((orcRes.data as Pedido[]) ?? []);
     setCarregando(false);
   }, []);
 
@@ -88,6 +109,28 @@ export default function DashboardPage() {
   const entregasHoje = entregas.filter(
     (p) => p.data_entrega && isToday(new Date(p.data_entrega))
   );
+
+  function textoReenvio(p: Pedido): string {
+    const linhas = ["🌾 *Orçamento — Maná · Pães & Mais*", ""];
+    if (p.cliente?.nome) linhas.push(`Cliente: ${p.cliente.nome}`);
+    linhas.push("");
+    for (const item of p.itens ?? []) {
+      linhas.push(
+        `• ${item.quantidade}x ${item.descricao} — ${formatBRL(item.preco_unitario)} = ${formatBRL(item.quantidade * item.preco_unitario)}`
+      );
+    }
+    linhas.push("", `*Total: ${formatBRL(totalPedido(p, p.itens ?? []))}*`, "");
+    linhas.push("Ainda tenho o orçamento aqui pra você! 🤍");
+    return linhas.join("\n");
+  }
+
+  function linkReenvio(p: Pedido): string {
+    const texto = encodeURIComponent(textoReenvio(p));
+    if (p.cliente?.telefone) {
+      return `https://wa.me/${telefoneParaWhatsApp(p.cliente.telefone)}?text=${texto}`;
+    }
+    return `/pedidos/${p.id}`;
+  }
 
   if (carregando) {
     return (
@@ -223,6 +266,49 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
         </Link>
+      )}
+
+      {orcamentosEsquecidos.length > 0 && (
+        <section>
+          <div className="mb-2 flex items-center gap-1.5">
+            <Clock className="size-4 text-[#8a7a3f]" />
+            <h2 className="font-semibold">Aguardando resposta</h2>
+          </div>
+          <div className="space-y-2">
+            {orcamentosEsquecidos.map((p) => (
+              <Card key={p.id} className="border-[#b3a268]/40 bg-[#b3a268]/10">
+                <CardContent className="flex items-center justify-between gap-2 p-4">
+                  <Link
+                    href={`/pedidos/${p.id}`}
+                    className="min-w-0 flex-1 outline-none"
+                  >
+                    <p className="truncate font-medium text-[#3a4720]">
+                      {p.cliente?.nome ?? "Sem cliente"}
+                    </p>
+                    <p className="text-sm text-[#6b5e2e]">
+                      Orçamento de {formatData(p.created_at)}
+                    </p>
+                  </Link>
+                  <Button
+                    size="icon"
+                    variant="outline"
+                    className="size-11 shrink-0 border-[#8c9a5d]/50 text-[#586b32]"
+                    aria-label={`Reenviar orçamento para ${p.cliente?.nome ?? "cliente"}`}
+                    asChild
+                  >
+                    <a
+                      href={linkReenvio(p)}
+                      target={p.cliente?.telefone ? "_blank" : undefined}
+                      rel="noopener noreferrer"
+                    >
+                      <MessageCircle className="size-4" />
+                    </a>
+                  </Button>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </section>
       )}
 
       <section>

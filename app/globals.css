@@ -144,3 +144,13 @@
     letter-spacing: 0.01em;
   }
 }
+
+@media print {
+  nav {
+    display: none !important;
+  }
+  main {
+    max-width: none !important;
+    padding: 0 !important;
+  }
+}
